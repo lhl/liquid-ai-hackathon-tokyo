@@ -14,8 +14,7 @@ Compute Resources: As many full MI300X, H100 nodes as we need, not a problem, re
 
 llm-jp-eval MT Validation (see: `RESEARCH.LFM2.md`)
 [x] what is MT?
-   - `RESEARCH.llm-jp-eval-mt-analysis.md`
-   - `MT-SUMMARY.md`
+   - `RESEARCH.llm-jp-eval-mt-analysis.md` (consolidated dataset + workflow notes)
 [ ] Get it running
 [ ] Replication runs
     [ ] Correct template, temperature, prompts
