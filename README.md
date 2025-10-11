@@ -15,30 +15,33 @@ Compute Resources: As many full MI300X, H100 nodes as we need, not a problem, re
 llm-jp-eval MT Validation (see: `RESEARCH.LFM2.md`)
 [x] what is MT?
    - `RESEARCH.llm-jp-eval-mt-analysis.md` (consolidated dataset + workflow notes)
-[ ] Get it running
-[ ] Replication runs
-  [ ] chotto 20250922 , 20251007
-  [ ] LFM2-350M-ENJP-MT
-  [ ] LFM2-350M
-  [ ] Qwen3 4B
-  [ ] Gemma 3 4B
+[x] Get it running
+[x] Review latest llm-jp-eval metrics in `eval/llm-jp-eval/results/tiny.jsonl` (legacy smoke test) and audit sample predictions (`tiny-preds.jsonl`); future runs land in `eval/results/<model>.scores.jsonl` + `.predictions.jsonl` with logs in `.log`.
+[x] Replication runs
+  [x] chotto 20251007
+  [x] LFM2-350M-ENJP-MT
+  [x] LFM2-350M
+  [x] Gemma 3 4B
   [ ] GPT-4o
-  [ ] GPT-4.1
-  [ ] Gemini 2.5 Flash
-  [ ] Gemini 2.5 Pro
-[ ] Alternative Judging (Feedback style LLM-as-a-Judge)
+[ ] Render COMET markdown summary via `python eval/report_mt_scores.py`
+
+[ ] TUI Vizualizer - like kaiseki
+[ ] Alternative Judging (Feedback style LLM-as-a-Judge) - see kaiseki
+[ ] Tally Numbers
+
+[ ] Sample 10 translations per model for presentation slides (`python eval/sample_predictions.py <model-id> --count 10`)
 
 Other benchmarks
-[ ] shisa-jp-tl-bench
-[ ] chotto-eval
-[ ] kiseki-eval
-[ ] shaberi
+[x] shisa-jp-tl-bench
+[x] chotto-eval
+[x] kiseki-eval
+[x] shaberi
 
 
 Train
 [x] Shisa V2.1 Chotto SFT
-[ ] Shisa V2.1 Chotto DPO
-[ ] Shisa V2.1 Chotto-only DPO
+[x] Shisa V2.1 Chotto DPO
+[x] Shisa V2.1 Chotto-only DPO
 
 UI - Create Parallel Prompting Streamlit UI
 [ ] YAML w/ optimal prompt (single turn support for LFM2) parameter endpoint per model
