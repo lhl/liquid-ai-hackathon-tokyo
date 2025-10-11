@@ -17,7 +17,15 @@ llm-jp-eval MT Validation (see: `RESEARCH.LFM2.md`)
    - `RESEARCH.llm-jp-eval-mt-analysis.md` (consolidated dataset + workflow notes)
 [ ] Get it running
 [ ] Replication runs
-    [ ] Correct template, temperature, prompts
+  [ ] chotto 20250922 , 20251007
+  [ ] LFM2-350M-ENJP-MT
+  [ ] LFM2-350M
+  [ ] Qwen3 4B
+  [ ] Gemma 3 4B
+  [ ] GPT-4o
+  [ ] GPT-4.1
+  [ ] Gemini 2.5 Flash
+  [ ] Gemini 2.5 Pro
 [ ] Alternative Judging (Feedback style LLM-as-a-Judge)
 
 Other benchmarks
@@ -25,6 +33,7 @@ Other benchmarks
 [ ] chotto-eval
 [ ] kiseki-eval
 [ ] shaberi
+
 
 Train
 [x] Shisa V2.1 Chotto SFT
