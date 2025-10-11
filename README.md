@@ -10,10 +10,10 @@ GOAL: Start with Evals, then training, then use the model!
 TEAM: 1 Lead, 3-4 Agents including UI specialist
 Compute Resources: As many full MI300X, H100 nodes as we need, not a problem, realistically
 
-[ ] README.md
+[x] README.md
 
 llm-jp-eval MT Validation (see: `RESEARCH.LFM2.md`)
-[ ] what is MT?
+[x] what is MT?
    - `RESEARCH.llm-jp-eval-mt-analysis.md`
    - `MT-SUMMARY.md`
 [ ] Get it running
@@ -28,9 +28,9 @@ Other benchmarks
 [ ] shaberi
 
 Train
-[ ] Shisa V2.1 SFT
-[ ] Shisa V2.1 DPO
-[ ] Chotto + Kiseki DPO
+[x] Shisa V2.1 Chotto SFT
+[ ] Shisa V2.1 Chotto DPO
+[ ] Shisa V2.1 Chotto-only DPO
 
 UI - Create Parallel Prompting Streamlit UI
 [ ] YAML w/ optimal prompt (single turn support for LFM2) parameter endpoint per model
