@@ -73,7 +73,7 @@ def parse_args() -> argparse.Namespace:
         default=MT_DATASETS,
         help="Dataset names to evaluate (default: all MT datasets).",
     )
-    parser.add_argument("--batch-size", type=int, default=4, help="Batch size for generation.")
+    parser.add_argument("--batch-size", type=int, default=128, help="Batch size for generation.")
     parser.add_argument("--max-samples", type=int, default=-1, help="Limit samples per dataset (-1 means all).")
     parser.add_argument(
         "--num-few-shots",
