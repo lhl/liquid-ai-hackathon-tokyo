@@ -10,8 +10,8 @@ import logging
 import os
 import sys
 import time
+from uuid import uuid4
 from dataclasses import dataclass
-from datetime import datetime
 from pathlib import Path
 from statistics import mean
 from typing import Any, Iterable
@@ -41,6 +41,7 @@ from llm_jp_eval.utils import GeneratedSample, get_evaluation_prompt, get_few_sh
 LOGGER = logging.getLogger("run-mt")
 DEFAULT_ANSWER_PATTERN = r"(?s)^(.*?)(?=\n\n|\Z)"
 MT_DATASETS = ["alt-e-to-j", "alt-j-to-e", "wikicorpus-e-to-j", "wikicorpus-j-to-e"]
+DEFAULT_EXCLUDE_DATASETS = ["wikicorpus-e-to-j", "wikicorpus-j-to-e"]
 
 
 @dataclass
@@ -73,7 +74,18 @@ def parse_args() -> argparse.Namespace:
         default=MT_DATASETS,
         help="Dataset names to evaluate (default: all MT datasets).",
     )
-    parser.add_argument("--batch-size", type=int, default=128, help="Batch size for generation.")
+    parser.add_argument(
+        "--exclude-datasets",
+        nargs="+",
+        default=None,
+        help="Additional dataset names to skip (defaults already exclude WikiCorpus splits).",
+    )
+    parser.add_argument(
+        "--include-wikicorpus",
+        action="store_true",
+        help="Include WikiCorpus datasets (disables the default exclusion).",
+    )
+    parser.add_argument("--batch-size", type=int, default=256, help="Batch size for generation.")
     parser.add_argument("--max-samples", type=int, default=-1, help="Limit samples per dataset (-1 means all).")
     parser.add_argument(
         "--num-few-shots",
@@ -81,11 +93,36 @@ def parse_args() -> argparse.Namespace:
         default=4,
         help="Fallback number of few-shot examples when dataset does not define it.",
     )
-    parser.add_argument("--output", type=Path, help="Path to save dataset-level results in JSONL format.")
-    parser.add_argument("--predictions", type=Path, help="Optional path to save per-sample predictions JSONL.")
-    parser.add_argument("--temperature", type=float, default=0.0, help="Sampling temperature.")
-    parser.add_argument("--top-p", type=float, default=1.0, help="Top-p sampling cutoff.")
-    parser.add_argument("--do-sample", action="store_true", help="Enable sampling (defaults to greedy).")
+    parser.add_argument("--output", type=Path, help="(Deprecated) alias for --scores.")
+    parser.add_argument(
+        "--scores",
+        type=Path,
+        help="Path to save dataset-level results JSONL. Defaults to results/<model>.scores.jsonl.",
+    )
+    parser.add_argument(
+        "--predictions",
+        type=Path,
+        help="Optional path to save per-sample predictions JSONL. Defaults to results/<model>.predictions.jsonl.",
+    )
+    parser.add_argument(
+        "--log-file",
+        type=Path,
+        help="Path to write run logs. Defaults to results/<model>.log.",
+    )
+    parser.add_argument("--temperature", type=float, default=0.2, help="Sampling temperature.")
+    parser.add_argument("--top-p", type=float, default=0.9, help="Top-p sampling cutoff.")
+    parser.add_argument(
+        "--do-sample",
+        dest="do_sample",
+        action="store_true",
+        help="Enable sampling (default). Combine with --no-sample to force greedy decoding.",
+    )
+    parser.add_argument(
+        "--no-sample",
+        dest="do_sample",
+        action="store_false",
+        help="Disable sampling and run greedy decoding.",
+    )
     parser.add_argument("--extra-output-tokens", type=int, default=0, help="Extra max tokens beyond dataset length.")
     parser.add_argument(
         "--dtype",
@@ -95,7 +132,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--engine",
-        choices=["auto", "transformers", "vllm", "openai"],
+        choices=["auto", "transformers", "vllm", "openai", "openai-batch"],
         default="auto",
         help="Generation backend: auto prefers vllm when available, otherwise falls back to transformers.",
     )
@@ -108,7 +145,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--vllm-gpu-memory-utilization",
         type=float,
-        help="Optional vLLM GPU memory utilization fraction.",
+        default=0.8,
+        help="Optional vLLM GPU memory utilization fraction (default: 0.8 to leave room for COMET).",
     )
     parser.add_argument(
         "--vllm-max-model-len",
@@ -128,7 +166,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--openai-max-concurrency",
         type=int,
-        default=4,
+        default=20,
         help="Maximum concurrent OpenAI requests per batch.",
     )
     parser.add_argument(
@@ -148,6 +186,35 @@ def parse_args() -> argparse.Namespace:
         default=1.0,
         help="Initial wait time between OpenAI retries; doubles after each failure.",
     )
+    parser.add_argument(
+        "--openai-batch-completion-window",
+        choices=["24h"],
+        default="24h",
+        help="Completion window passed to the OpenAI Batch API.",
+    )
+    parser.add_argument(
+        "--openai-batch-poll-interval",
+        type=float,
+        default=10.0,
+        help="Seconds to wait between batch status polls.",
+    )
+    parser.add_argument(
+        "--openai-batch-max-requests",
+        type=int,
+        default=50_000,
+        help="Maximum requests per OpenAI batch before splitting (API limit).",
+    )
+    parser.add_argument(
+        "--openai-batch-description",
+        type=str,
+        help="Optional description metadata attached to OpenAI batches.",
+    )
+    parser.add_argument(
+        "--openai-batch-retain-inputs",
+        action="store_true",
+        help="Keep generated batch input files on disk for inspection.",
+    )
+    parser.set_defaults(do_sample=True)
     parser.add_argument("--device-map", default="auto", help="Device map passed to from_pretrained.")
     parser.add_argument("--trust-remote-code", action="store_true", help="Allow custom model code from repo.")
     parser.add_argument(
@@ -160,9 +227,26 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def setup_logging(verbose: bool) -> None:
+def setup_logging(verbose: bool, log_file: Path | None = None) -> None:
     level = logging.DEBUG if verbose else logging.INFO
-    logging.basicConfig(level=level, format="%(asctime)s [%(levelname)s] %(message)s")
+    formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+
+    handlers: list[logging.Handler] = []
+
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(level)
+    console_handler.setFormatter(formatter)
+    handlers.append(console_handler)
+
+    if log_file is not None:
+        log_path = Path(log_file)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        file_handler = logging.FileHandler(log_path, encoding="utf-8")
+        file_handler.setLevel(level)
+        file_handler.setFormatter(formatter)
+        handlers.append(file_handler)
+
+    logging.basicConfig(level=level, handlers=handlers, force=True)
 
 
 def resolve_dtype(name: str) -> torch.dtype | None:
@@ -501,6 +585,165 @@ def _batch_generate_openai(
     return outputs
 
 
+def _batch_generate_openai_batch(
+    engine_config: dict[str, Any],
+    prompts: list[str],
+    batch_size: int,  # unused but kept for signature parity
+    max_new_tokens: int,
+    temperature: float,
+    top_p: float,
+    do_sample: bool,
+) -> list[str]:
+    try:
+        from openai import OpenAI  # type: ignore[import]  # noqa: F401
+    except ModuleNotFoundError as exc:  # pragma: no cover - defensive
+        raise RuntimeError("OpenAI backend requested but openai package is not installed.") from exc
+
+    _ = batch_size  # batch_size is ignored for the asynchronous batch API
+
+    client = engine_config["client"]
+    model_name = engine_config["model_name"]
+    completion_window = engine_config["completion_window"]
+    poll_interval = max(1.0, float(engine_config["poll_interval"]))
+    work_dir: Path = engine_config["work_dir"]
+    work_dir.mkdir(parents=True, exist_ok=True)
+    max_requests = max(1, int(engine_config["max_requests"]))
+    metadata = engine_config.get("metadata")
+    retain_inputs = bool(engine_config.get("retain_inputs"))
+
+    effective_temperature = temperature if do_sample else 0.0
+    effective_top_p = top_p if do_sample else 1.0
+
+    outputs = [""] * len(prompts)
+    chunk_uuid = uuid4().hex
+
+    for chunk_start in range(0, len(prompts), max_requests):
+        chunk_prompts = prompts[chunk_start : chunk_start + max_requests]
+        if not chunk_prompts:
+            continue
+
+        id_to_index: dict[str, int] = {}
+        chunk_id = f"{chunk_uuid}-{chunk_start}"
+        input_path = work_dir / f"{chunk_id}.jsonl"
+
+        with input_path.open("w", encoding="utf-8") as f:
+            for offset, (prompt_index, prompt) in enumerate(
+                zip(range(chunk_start, chunk_start + len(chunk_prompts)), chunk_prompts, strict=False)
+            ):
+                custom_id = f"{chunk_id}-{offset}"
+                id_to_index[custom_id] = prompt_index
+                body = {
+                    "model": model_name,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": max_new_tokens,
+                    "temperature": effective_temperature,
+                    "top_p": effective_top_p,
+                }
+                record = {
+                    "custom_id": custom_id,
+                    "method": "POST",
+                    "url": "/v1/chat/completions",
+                    "body": body,
+                }
+                json.dump(record, f, ensure_ascii=False)
+                f.write("\n")
+
+        LOGGER.info("OpenAI batch prepared (%s requests) -> %s", len(chunk_prompts), input_path)
+
+        with input_path.open("rb") as handle:
+            batch_file = client.files.create(file=handle, purpose="batch")
+
+        batch_kwargs: dict[str, Any] = {
+            "input_file_id": batch_file.id,
+            "endpoint": "/v1/chat/completions",
+            "completion_window": completion_window,
+        }
+        if metadata:
+            batch_kwargs["metadata"] = metadata
+
+        batch = client.batches.create(**batch_kwargs)
+        LOGGER.info("Submitted OpenAI batch %s (status=%s)", batch.id, batch.status)
+
+        last_status = None
+        while True:
+            batch = client.batches.retrieve(batch.id)
+            status = batch.status
+            if status != last_status:
+                request_counts = getattr(batch, "request_counts", None)
+                if request_counts is not None:
+                    LOGGER.info(
+                        "Batch %s status=%s (completed=%s / failed=%s / total=%s)",
+                        batch.id,
+                        status,
+                        request_counts.completed,
+                        request_counts.failed,
+                        request_counts.total,
+                    )
+                else:
+                    LOGGER.info("Batch %s status=%s", batch.id, status)
+                last_status = status
+            if status in {"completed", "failed", "cancelled", "expired"}:
+                break
+            time.sleep(poll_interval)
+
+        if batch.status != "completed":
+            error_file_id = getattr(batch, "error_file_id", None)
+            error_summary = ""
+            if error_file_id:
+                try:
+                    error_bytes = client.files.content(error_file_id).read()
+                    error_summary = error_bytes.decode("utf-8")
+                except Exception as exc:  # pragma: no cover - defensive
+                    error_summary = f"<failed to fetch error file: {exc}>"
+            raise RuntimeError(
+                f"OpenAI batch {batch.id} ended with status {batch.status}. Error details: {error_summary}"
+            )
+
+        output_file_id = getattr(batch, "output_file_id", None)
+        if not output_file_id:
+            raise RuntimeError(f"OpenAI batch {batch.id} completed without an output file.")
+
+        output_bytes = client.files.content(output_file_id).read()
+        for line in output_bytes.decode("utf-8").splitlines():
+            if not line.strip():
+                continue
+            payload = json.loads(line)
+            custom_id = payload.get("custom_id")
+            target_index = id_to_index.get(custom_id)
+            if target_index is None:
+                LOGGER.warning("Received response for unknown custom_id %s in batch %s", custom_id, batch.id)
+                continue
+            if payload.get("error"):
+                raise RuntimeError(
+                    f"OpenAI batch {batch.id} request {custom_id} failed: {payload['error']}"
+                )
+            body = payload.get("response", {}).get("body", {})
+            choices = body.get("choices", [])
+            text = ""
+            if choices:
+                message = choices[0].get("message") or {}
+                text = message.get("content") or ""
+            outputs[target_index] = (text or "").strip()
+
+        # Clean up remote batch input/output files to avoid clutter.
+        try:
+            client.files.delete(batch_file.id)
+        except Exception as exc:  # pragma: no cover - best-effort cleanup
+            LOGGER.debug("Failed to delete OpenAI batch input file %s: %s", batch_file.id, exc)
+        try:
+            client.files.delete(output_file_id)
+        except Exception as exc:  # pragma: no cover - best-effort cleanup
+            LOGGER.debug("Failed to delete OpenAI batch output file %s: %s", output_file_id, exc)
+
+        if not retain_inputs:
+            try:
+                input_path.unlink()
+            except OSError as exc:  # pragma: no cover - best-effort cleanup
+                LOGGER.debug("Failed to remove batch input file %s: %s", input_path, exc)
+
+    return outputs
+
+
 def batch_generate(
     model,
     tokenizer,
@@ -536,6 +779,18 @@ def batch_generate(
             top_p=top_p,
             do_sample=do_sample,
         )
+    if engine == "openai-batch":
+        if engine_config is None:
+            raise RuntimeError("OpenAI batch engine requires engine_config with client information.")
+        return _batch_generate_openai_batch(
+            engine_config=engine_config,
+            prompts=prompts,
+            batch_size=batch_size,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+            top_p=top_p,
+            do_sample=do_sample,
+        )
     return _batch_generate_transformers(
         model=model,
         tokenizer=tokenizer,
@@ -563,9 +818,40 @@ def save_jsonl(path: Path, records: Iterable[dict]) -> None:
 
 def main() -> None:
     args = parse_args()
-    setup_logging(args.verbose)
+    force_greedy = False
+    if args.temperature <= 0.0:
+        if args.temperature < 0.0:
+            args.temperature = 0.0
+        if args.do_sample:
+            force_greedy = True
+        args.do_sample = False
+    run_name = sanitize_run_name(args.model)
+    results_dir = REPO_ROOT / "results"
+
+    if args.log_file is None:
+        args.log_file = results_dir / f"{run_name}.log"
+
+    setup_logging(args.verbose, args.log_file)
+    if force_greedy:
+        LOGGER.info("Temperature <= 0 detected; disabling sampling for greedy decoding.")
+
     set_seed()
 
+    excludes = set(DEFAULT_EXCLUDE_DATASETS)
+    if args.include_wikicorpus:
+        excludes.clear()
+    if args.exclude_datasets:
+        excludes.update(args.exclude_datasets)
+
+    filtered_datasets = [dataset for dataset in args.datasets if dataset not in excludes]
+    if not filtered_datasets:
+        raise ValueError("No datasets left to evaluate after applying --exclude-datasets.")
+    if len(filtered_datasets) != len(args.datasets):
+        removed = sorted(excludes.intersection(args.datasets))
+        LOGGER.info("Skipping datasets: %s", ", ".join(removed))
+    args.datasets = filtered_datasets
+
+    LOGGER.info("Logging to %s", args.log_file)
     LOGGER.info(
         "Max samples per dataset: %s",
         "all" if args.max_samples < 0 else args.max_samples,
@@ -634,6 +920,41 @@ def main() -> None:
             "max_retries": args.openai_max_retries,
             "retry_wait": args.openai_retry_wait_seconds,
         }
+    elif engine == "openai-batch":
+        try:
+            from openai import OpenAI  # type: ignore[import]
+        except ModuleNotFoundError as exc:  # pragma: no cover - defensive path
+            raise RuntimeError("OpenAI backend requested but openai package is not installed.") from exc
+
+        api_key = args.openai_api_key or os.environ.get("OPENAI_API_KEY")
+        if not api_key:
+            raise RuntimeError(
+                "OpenAI batch engine requires an API key. Pass --openai-api-key or set OPENAI_API_KEY."
+            )
+
+        client_kwargs: dict[str, Any] = {"api_key": api_key}
+        if args.openai_base_url:
+            client_kwargs["base_url"] = args.openai_base_url
+        if args.openai_request_timeout is not None:
+            client_kwargs["timeout"] = args.openai_request_timeout
+
+        client = OpenAI(**client_kwargs)
+        model = None
+        tokenizer = None
+        batch_work_dir = results_dir / "openai_batches"
+        metadata = None
+        if args.openai_batch_description:
+            metadata = {"description": args.openai_batch_description}
+        engine_config = {
+            "client": client,
+            "model_name": args.model,
+            "completion_window": args.openai_batch_completion_window,
+            "poll_interval": args.openai_batch_poll_interval,
+            "work_dir": batch_work_dir,
+            "max_requests": args.openai_batch_max_requests,
+            "metadata": metadata,
+            "retain_inputs": args.openai_batch_retain_inputs,
+        }
     else:
         model_loading_kwargs: dict[str, object] = {
             "device_map": args.device_map,
@@ -689,7 +1010,21 @@ def main() -> None:
     ensure_metrics_initialized(all_metrics, args.cache_dir)
     LOGGER.info("Total samples queued across datasets: %d", total_samples)
 
-    run_name = sanitize_run_name(args.model)
+    if args.output and args.scores and args.output != args.scores:
+        LOGGER.warning(
+            "Both --output and --scores supplied; using --scores value %s and ignoring --output %s.",
+            args.scores,
+            args.output,
+        )
+
+    scores_path = args.scores or args.output
+    if scores_path is None:
+        scores_path = results_dir / f"{run_name}.scores.jsonl"
+    args.scores = scores_path
+
+    if args.predictions is None:
+        args.predictions = results_dir / f"{run_name}.predictions.jsonl"
+
     score_results: dict[str, dict[str, float]] = {}
     prediction_records: list[dict] = []
     dataset_level_records: list[dict] = []
@@ -775,13 +1110,8 @@ def main() -> None:
         }
     )
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    if args.output is None:
-        results_dir = REPO_ROOT / "results"
-        args.output = results_dir / f"mt_{sanitize_run_name(args.model)}_{timestamp}.jsonl"
-
-    save_jsonl(args.output, dataset_level_records)
-    LOGGER.info("Saved dataset-level results to %s", args.output)
+    save_jsonl(args.scores, dataset_level_records)
+    LOGGER.info("Saved dataset-level results to %s", args.scores)
 
     if args.predictions and prediction_records:
         save_jsonl(args.predictions, prediction_records)
