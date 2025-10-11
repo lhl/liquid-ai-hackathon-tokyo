@@ -38,16 +38,18 @@ On completion the script prints the COMET average for the MT category and writes
 
 ## Key Options
 - `--max-samples N`: limit evaluation to the first `N` samples per dataset (default is all).
-- `--batch-size B`: adjust generation batch size (default: 4).
+- `--batch-size B`: adjust generation batch size (default: 256).
 - `--num-few-shots K`: override few-shot count when a dataset does not specify one (default: 4).
 - `--split {dev,test}`: choose which split to evaluate (default: `test`).
-- `--do-sample`, `--temperature`, `--top-p`: enable sampling instead of greedy decoding.
+- `--temperature`, `--top-p`: sampling defaults to `temperature=0.5`, `top_p=0.95`.
+- `--do-sample` / `--no-sample`: sampling is enabled by default; use `--no-sample` or set `--temperature 0` for greedy decoding.
 - `--extra-output-tokens M`: add extra generation allowance beyond the dataset’s requested maximum.
 - `--predictions path`: store per-sample predictions and references for later analysis.
 - `--device-map`, `--dtype`, `--trust-remote-code`: forwarded to `transformers` when loading models.
-- `--engine {auto,transformers,vllm,openai}`: auto (default) prefers vLLM when it is installed, otherwise falls back to `transformers`. Select `vllm` to force the high-throughput backend, `transformers` for the reference implementation, or `openai` to call an OpenAI-compatible endpoint.
+- `--engine {auto,transformers,vllm,openai,openai-batch}`: auto (default) prefers vLLM when it is installed, otherwise falls back to `transformers`. Select `vllm` to force the high-throughput backend, `transformers` for the reference implementation, `openai` to issue synchronous chat completions, or `openai-batch` to submit asynchronous Batch API jobs.
 - `--vllm-tensor-parallel-size N`, `--vllm-gpu-memory-utilization F`, `--vllm-max-model-len L`: optional knobs when `--engine vllm` is active.
-- `--openai-base-url`, `--openai-api-key`, `--openai-max-concurrency`, `--openai-request-timeout`, `--openai-max-retries`, `--openai-retry-wait-seconds`: configure OpenAI or OpenAI-compatible endpoints. Defaults read from `OPENAI_BASE_URL` / `OPENAI_API_KEY` when available.
+- `--openai-base-url`, `--openai-api-key`, `--openai-max-concurrency`, `--openai-request-timeout`, `--openai-max-retries`, `--openai-retry-wait-seconds`: configure synchronous OpenAI or OpenAI-compatible endpoints. Defaults read from `OPENAI_BASE_URL` / `OPENAI_API_KEY` when available.
+- `--openai-batch-*`: knobs for the Batch backend. `--openai-batch-completion-window` (currently fixed to `24h`), `--openai-batch-poll-interval`, `--openai-batch-max-requests` (API limit 50k), `--openai-batch-description`, and `--openai-batch-retain-inputs` determine how jobs are uploaded and monitored.
 
 Run `python run-mt.py --help` to see the full list.
 
@@ -76,6 +78,17 @@ If you supplied `--predictions`, each JSONL row there includes the prompt, model
 Recent versions of `run-mt.py` addressed a failure where right-padded decoder prompts plus a fixed batch size exhausted GPU memory (`torch.OutOfMemoryError`). Padding now defaults to the left, and the generator gracefully halves the batch size until the request fits (this also applies when using the vLLM backend).
 
 That’s it—`run-mt.py` now encapsulates preprocessing, generation, scoring, and result export for the translation benchmarks bundled with `llm-jp-eval`.
+
+## OpenAI Batch Backend
+
+`--engine openai-batch` submits prompts through OpenAI’s Batch API. The script writes each dataset’s prompts to a JSONL file (`results/openai_batches/` by default), uploads it via the Files API, and kicks off a batch job against `/v1/chat/completions`. It then polls the batch until completion (default 10 s interval), downloads the output file, and merges responses back into the evaluation flow.
+
+Important notes:
+- The Batch API caps each submission at 50 000 requests; the script automatically splits larger datasets into multiple batches.
+- Result order is recovered via `custom_id`, so you can safely shuffle the output file.
+- Failed requests surface as errors—the job aborts with a descriptive message and prints the batch error file contents when possible.
+- Set `--openai-batch-description "nightly eval"` (or similar) to tag jobs in the OpenAI dashboard, and `--openai-batch-retain-inputs` if you want to keep the generated JSONL inputs on disk for auditing.
+- Batch responses arrive within the 24 h completion window. Use the synchronous `openai` engine when you need immediate outputs.
 
 ## Using the vLLM Backend
 The script can drive vLLM directly—no separate inference server required.
