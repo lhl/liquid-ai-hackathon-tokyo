@@ -1,0 +1,62 @@
+base_model: LiquidAI/LFM2-350M-ENJP-MT
+
+chunked_cross_entropy: true
+
+eot_tokens:
+  - "<|im_end|>"
+datasets:
+  - path: chotto-20251010.sft.jsonl
+    type: chat_template
+    field_messages: conversations
+    message_property_mappings:
+      role: role
+      content: content
+    roles:
+      system:
+        - system
+      assistant:
+        - assistant
+        - gpt
+        - model
+      user:
+        - user
+        - human
+    roles_to_train: ["assistant"]
+dataset_prepared_path: last_run_prepared_sft
+output_dir: /data/outputs/shisa-v2.1c-lfm2-350m-sft
+
+sequence_len: 8192
+sample_packing: true
+flash_attention: true
+pad_to_sequence_len: true
+
+neftune_noise_alpha: 5
+
+use_wandb: true
+wandb_entity: augmxnt
+wandb_project: liquid-hackathon-tokyo
+wandb_name: "shisa-v2.1c-lfm2-350m-sft"
+
+# GBS = 256 / 8 GPU / 32 MBS / 4 GAS
+gradient_accumulation_steps: 1
+micro_batch_size: 32
+num_epochs: 3
+optimizer: adamw_torch_8bit
+lr_scheduler: cosine
+learning_rate: 2.5e-5 # 4.78 @ GBS=128
+
+train_on_inputs: false
+group_by_length: false
+bf16: true
+tf32: false
+
+gradient_checkpointing: true
+gradient_checkpointing_kwargs:
+  use_reentrant: false
+logging_steps: 1
+
+warmup_ratio: 0.03
+saves_per_epoch: 1
+
+deepspeed: zero3_bf16.json
+weight_decay: 1e-4
