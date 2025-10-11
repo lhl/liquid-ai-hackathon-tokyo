@@ -6,7 +6,7 @@
 - Anchor burndown tasks tied to MT validation, replication runs, and future metric extensions.
 
 ## Benchmark Stack
-- **Inference driver** — `run-mt.py` prepares prompts, dispatches inference (supports `transformers`, `vllm`, and OpenAI-compatible APIs), and collects scores with deterministic fallbacks (`run-mt.py:200-741`).
+- **Inference driver** — `run-mt.py` prepares prompts, dispatches inference (supports `transformers`, `vllm`, synchronous `openai`, and the new asynchronous `openai-batch` backend), and collects scores with deterministic fallbacks (`run-mt.py:200-741`).
 - **Prompt preparation** — Translation datasets expose task instructions, optional exemplars, and generation budgets. ALT injects four few-shot examples; WikiCorpus is strictly zero-shot (`run-mt.py:200-228`, `llm-jp-eval/src/llm_jp_eval/jaster/*.py`).
 - **Normalization** — Outputs pass through Unicode NFKC normalization before metric computation (`llm-jp-eval/src/llm_jp_eval/utils.py:54-60`).
 - **Scoring** — BLEU, BERTScore F1, and COMET WMT22 are logged per dataset; COMET is the headline metric used for category and overall averages (`run-mt.py:698-741`, `llm-jp-eval/src/llm_jp_eval/metrics/metrics.py:230-317`).
@@ -48,6 +48,9 @@
 - **Few-shot asymmetry** — ALT’s four exemplars vs. WikiCorpus zero-shot prompts can skew results toward models with stronger in-context learning.
 - **Domain coverage gaps** — News and encyclopedic text dominate; conversational, technical, and long-context narratives remain under-tested.
 - **Judge fidelity** — COMET may reward fluent hallucinations or penalise literal yet valid translations, particularly for Japanese tokenisation idiosyncrasies.
+- **COMET GPU interplay** — Running COMET with `gpus>1` triggers PyTorch Lightning’s distributed launch, which re-executes `eval/run-mt.py` in worker ranks (`metrics/metrics.py:333-348`). Those child processes try to instantiate fresh vLLM engines, immediately exhausting VRAM (see `eval/results/shisa-ai--chotto-14b-20251007-dpo-openrlhf.log`). We now clamp COMET to a single GPU (`metrics/metrics.py:35-53`) to avoid extra processes; pinning `LLM_JP_EVAL_COMET_GPUS` to 0 or 1 still works when juggling inference/metric sharing.
+- **OpenAI throughput** — The OpenAI backend fans requests across a thread pool sized by `--openai-max-concurrency` (default 20) while chunking prompts by `--batch-size` (`run-mt.py:523-543`). Increase the flag if the endpoint/quotas allow more parallelism.
+- **Sampling defaults** — Generation now samples by default (`temperature=0.5`, `top_p=0.95`); pass `--no-sample` or set `--temperature 0` to fall back to greedy decoding.
 
 ## Strengths
 - Broad bilingual coverage with deterministic preprocessing and prompt construction.
@@ -65,7 +68,6 @@
 ## Practical Tips
 1. Run full evaluations to avoid noisy metrics; document any subset runs with sample counts.
 2. Pin COMET to CPU when GPU memory is scarce (`CUDA_VISIBLE_DEVICES=`) or confirm ~4 GB VRAM availability for GPU acceleration.
-3. Inspect per-sample prediction dumps (`--predictions`) to reconcile COMET anomalies with BLEU/BERTScore deltas.
+3. Use `--engine openai-batch` for cheap/large OpenAI runs; the helper uploads dataset-sized JSONL files, polls the Batch API, and reconciles `custom_id` keys when merging responses. Stick with `--engine openai` when you need immediate completions.
 4. Cache datasets via `python -m llm_jp_eval.preprocess --targets alt-j-to-e ...` ahead of time to eliminate download latency.
 5. Capture command history and key findings in the research logs referenced in `README.md` for smooth agent handoffs.
-
