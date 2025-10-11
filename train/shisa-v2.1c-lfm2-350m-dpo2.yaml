@@ -12,7 +12,7 @@ eot_tokens:
 chat_template: tokenizer_default
 rl: dpo
 datasets:
-  - path: chotto-20251010.dpo.jsonl
+  - path: chotto-20251010.dpo-only.jsonl
     type: chat_template.argilla_chat
     field_chosen: chosen
     field_rejected: rejected
@@ -33,7 +33,7 @@ datasets:
 
 dataset_prepared_path:
 val_set_size: 0
-output_dir: /data/outputs/shisa-v2.1c-lfm2-350m-dpo
+output_dir: /data/outputs/shisa-v2.1c-lfm2-350m-dpo2
 
 sequence_len: 4096
 sample_packing: false
@@ -45,7 +45,7 @@ neftune_noise_alpha: 5
 use_wandb: true
 wandb_entity: augmxnt
 wandb_project: liquid-hackathon-tokyo
-wandb_name: "8xMI300 shisa-v2.1c-lfm2-350m-dpo"
+wandb_name: "8xMI300 shisa-v2.1c-lfm2-350m-dpo2"
 
 # GBS=128 / 8 GPU / MBS=16
 gradient_accumulation_steps: 1
