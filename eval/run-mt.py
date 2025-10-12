@@ -8,6 +8,7 @@ import importlib.util
 import json
 import logging
 import os
+import re
 import sys
 import time
 from uuid import uuid4
@@ -84,6 +85,10 @@ def parse_args() -> argparse.Namespace:
         "--include-wikicorpus",
         action="store_true",
         help="Include WikiCorpus datasets (disables the default exclusion).",
+    )
+    parser.add_argument(
+        "--run-tag",
+        help="Optional suffix appended to generated run name (e.g. temperature tweak or timestamp).",
     )
     parser.add_argument("--batch-size", type=int, default=256, help="Batch size for generation.")
     parser.add_argument("--max-samples", type=int, default=-1, help="Limit samples per dataset (-1 means all).")
@@ -263,6 +268,45 @@ def resolve_dtype(name: str) -> torch.dtype | None:
 
 def sanitize_run_name(model_name: str) -> str:
     return model_name.replace("/", "--")
+
+
+def sanitize_component(value: str) -> str:
+    safe = value.strip().replace("/", "--")
+    safe = re.sub(r"[^A-Za-z0-9.+-]", "-", safe)
+    safe = safe.strip(".-+")
+    return safe or "run"
+
+
+def format_float_for_name(value: float) -> str:
+    text = f"{value:.4f}".rstrip("0").rstrip(".")
+    if not text:
+        text = "0"
+    return text.replace(".", "_")
+
+
+def build_run_name(args: argparse.Namespace) -> str:
+    base = sanitize_run_name(args.model)
+    variant_parts: list[str] = []
+
+    do_sample = bool(args.do_sample)
+    if do_sample:
+        variant_parts.append(
+            f"sampled-t{format_float_for_name(args.temperature)}-p{format_float_for_name(args.top_p)}"
+        )
+    else:
+        variant_parts.append("greedy")
+
+    if args.split and args.split != "test":
+        variant_parts.append(f"split-{sanitize_component(args.split)}")
+
+    if args.max_samples is not None and args.max_samples >= 0:
+        variant_parts.append(f"max{args.max_samples}")
+
+    if getattr(args, "run_tag", None):
+        variant_parts.append(sanitize_component(args.run_tag))
+
+    variant = "+".join(part for part in variant_parts if part)
+    return f"{base}.{variant}" if variant else base
 
 
 def resolve_model_device(model) -> torch.device:
@@ -825,7 +869,7 @@ def main() -> None:
         if args.do_sample:
             force_greedy = True
         args.do_sample = False
-    run_name = sanitize_run_name(args.model)
+    run_name = build_run_name(args)
     results_dir = REPO_ROOT / "results"
 
     if args.log_file is None:
@@ -834,6 +878,7 @@ def main() -> None:
     setup_logging(args.verbose, args.log_file)
     if force_greedy:
         LOGGER.info("Temperature <= 0 detected; disabling sampling for greedy decoding.")
+    LOGGER.info("Run identifier: %s", run_name)
 
     set_seed()
 
