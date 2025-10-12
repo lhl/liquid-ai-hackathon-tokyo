@@ -10,6 +10,28 @@ GOAL: Start with Evals, then training, then use the model!
 TEAM: 1 Lead, 3-4 Agents including UI specialist
 Compute Resources: As many full MI300X, H100 nodes as we need, not a problem, realistically
 
+### FINAL SPRINT - Sunday 10:30AM → 3PM Deadline
+[x] 10:30-11:30AM: LLM-as-a-Judge Implementation
+    [x] Write Ultrafeedback-style scoring script for MT samples
+    [x] Run judge on sample translations from each model
+    [x] Document findings in RESEARCH.*.md
+[x] 11:30AM-12:30PM: TUI Data Viewer (kaiseki-style)
+    [x] Build terminal UI for browsing predictions
+    [x] Support side-by-side model comparison
+    [x] Integrate COMET + judge scores
+[ ] 12:30-1:30PM: Parallel Prompting Streamlit UI
+    [ ] YAML config for model endpoints (LFM2 single-turn)
+    [ ] Multi-model parallel translation interface
+    [ ] Undo/clear/rewind controls
+[x] 1:30-2:00PM: Finalize Numbers & Samples
+    [x] Render COMET markdown summary (`python eval/report_mt_scores.py`)
+    [x] Sample 10 translations per model (`python eval/sample_predictions.py <model-id> --count 10`)
+    [x] Tally final numbers for presentation
+[x] 2:00-3:00PM: Presentation Polish (4-5 minutes)
+    [x] Insert concrete numbers and examples
+    [x] Rehearse timing
+    [x] Export final deck
+
 [x] README.md
 
 llm-jp-eval MT Validation (see: `RESEARCH.LFM2.md`)
