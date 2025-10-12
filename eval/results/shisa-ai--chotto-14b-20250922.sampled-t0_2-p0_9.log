@@ -1,0 +1,17 @@
+2025-10-12 11:22:09,847 [INFO] Run identifier: shisa-ai--chotto-14b-20250922.sampled-t0_2-p0_9
+2025-10-12 11:22:09,848 [INFO] Skipping datasets: wikicorpus-e-to-j, wikicorpus-j-to-e
+2025-10-12 11:22:09,848 [INFO] Logging to /home/lhl/liquid-ai-hackathon-tokyo/eval/results/shisa-ai--chotto-14b-20250922.sampled-t0_2-p0_9.log
+2025-10-12 11:22:09,848 [INFO] Max samples per dataset: all
+2025-10-12 11:22:09,848 [INFO] Engine auto-detected: using vllm backend.
+2025-10-12 11:22:09,848 [INFO] Loading model shisa-ai/chotto-14b-20250922 with engine vllm
+2025-10-12 11:23:01,270 [INFO] Prepared dataset alt-e-to-j with 1010 samples (max output tokens 250)
+2025-10-12 11:23:01,311 [INFO] Prepared dataset alt-j-to-e with 1010 samples (max output tokens 500)
+2025-10-12 11:23:05,509 [INFO] Encoder model frozen.
+2025-10-12 11:23:05,637 [INFO] Total samples queued across datasets: 2020
+2025-10-12 11:23:05,637 [INFO] Evaluating alt-e-to-j with 1010 samples
+2025-10-12 11:23:40,201 [INFO] alt-e-to-j scores: ool=0.0000, bleu_ja=11.2451, bert_score_ja_f1=0.8359, comet_wmt22=0.8792
+2025-10-12 11:23:40,201 [INFO] Evaluating alt-j-to-e with 1010 samples
+2025-10-12 11:24:02,697 [INFO] alt-j-to-e scores: ool=0.0000, bleu_en=16.8933, bert_score_en_f1=0.9497, comet_wmt22=0.8695
+2025-10-12 11:24:02,698 [INFO] Saved dataset-level results to /home/lhl/liquid-ai-hackathon-tokyo/eval/results/shisa-ai--chotto-14b-20250922.sampled-t0_2-p0_9.scores.jsonl
+2025-10-12 11:24:02,723 [INFO] Saved prediction records to /home/lhl/liquid-ai-hackathon-tokyo/eval/results/shisa-ai--chotto-14b-20250922.sampled-t0_2-p0_9.predictions.jsonl
+2025-10-12 11:24:02,724 [INFO] MT average (comet_wmt22): 0.8743

@@ -1,0 +1,17 @@
+2025-10-12 12:06:53,332 [INFO] Run identifier: LiquidAI--LFM2-350M-ENJP-MT.sampled-t0_5-p0_95
+2025-10-12 12:06:53,333 [INFO] Skipping datasets: wikicorpus-e-to-j, wikicorpus-j-to-e
+2025-10-12 12:06:53,333 [INFO] Logging to /home/lhl/liquid-ai-hackathon-tokyo/eval/results/LiquidAI--LFM2-350M-ENJP-MT.sampled-t0_5-p0_95.log
+2025-10-12 12:06:53,333 [INFO] Max samples per dataset: all
+2025-10-12 12:06:53,333 [INFO] Engine auto-detected: using vllm backend.
+2025-10-12 12:06:53,333 [INFO] Loading model LiquidAI/LFM2-350M-ENJP-MT with engine vllm
+2025-10-12 12:07:05,897 [INFO] Prepared dataset alt-e-to-j with 1010 samples (max output tokens 250)
+2025-10-12 12:07:06,293 [INFO] Prepared dataset alt-j-to-e with 1010 samples (max output tokens 500)
+2025-10-12 12:07:10,404 [INFO] Encoder model frozen.
+2025-10-12 12:07:10,534 [INFO] Total samples queued across datasets: 2020
+2025-10-12 12:07:10,534 [INFO] Evaluating alt-e-to-j with 1010 samples
+2025-10-12 12:07:29,929 [INFO] alt-e-to-j scores: ool=0.0000, bleu_ja=0.5406, bert_score_ja_f1=0.5549, comet_wmt22=0.4165
+2025-10-12 12:07:29,929 [INFO] Evaluating alt-j-to-e with 1010 samples
+2025-10-12 12:08:08,337 [INFO] alt-j-to-e scores: ool=0.0000, bleu_en=3.9624, bert_score_en_f1=0.7650, comet_wmt22=0.4494
+2025-10-12 12:08:08,337 [INFO] Saved dataset-level results to /home/lhl/liquid-ai-hackathon-tokyo/eval/results/LiquidAI--LFM2-350M-ENJP-MT.sampled-t0_5-p0_95.scores.jsonl
+2025-10-12 12:08:08,375 [INFO] Saved prediction records to /home/lhl/liquid-ai-hackathon-tokyo/eval/results/LiquidAI--LFM2-350M-ENJP-MT.sampled-t0_5-p0_95.predictions.jsonl
+2025-10-12 12:08:08,375 [INFO] MT average (comet_wmt22): 0.4330
