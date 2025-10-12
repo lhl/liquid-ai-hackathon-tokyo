@@ -5,6 +5,7 @@
 - Commit: `ceb58dba00d27853671695ac967bba2fecd06326` (vendored on 2024-10-11)
 - Results dir: `eval/results/` (auto-created for dataset metrics, prediction dumps, and logs).
 - Default command writes dataset summaries to `results/<model>.scores.jsonl`, raw translations to `results/<model>.predictions.jsonl`, and console logs to `results/<model>.log` (override with `--scores` / `--predictions` / `--log-file` as needed).
+- Filenames now include the decoding strategy (e.g. `.greedy`, `.sampled-t0_2-p0_9`); add extra context with `--run-tag timestamp` when you need fully unique artifacts per run.
 
 ## Generation Settings
 - **Greedy / Liquid AI recommendation** — leave sampling disabled (`--do-sample` omitted, `--temperature 0`, `--top-p 1.0`).
@@ -36,6 +37,7 @@ CUDA_VISIBLE_DEVICES=3 ./run-mt.py google/gemma-3-4b-it --do-sample --temperatur
 
 ## Result Utilities
 - Markdown table of COMET scores: `python report_mt_scores.py` (use `--metric` / `--human-names` for customisation).
+- Interactive TUI scoreboard (grouped by model & run): `python mt_scores_tui.py` (same flags as `report_mt_scores.py`).
 - Random sample viewer: `python sample_predictions.py LiquidAI/LFM2-350M-ENJP-MT --count 10`.
 - Override locations with `--results-dir`, `--scores`, `--predictions`, or `--log-file` when runs are stored elsewhere.
 
