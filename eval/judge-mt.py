@@ -362,7 +362,7 @@ def compute_summary(judgments: list[dict[str, Any]], judge_model: str, samples: 
 
 
 @click.command(help="Judge machine translation predictions with LLM-as-a-Judge.")
-@click.argument("predictions", nargs=-1, required=True)
+@click.argument("predictions", nargs=-1)
 @click.option("--judge", default=DEFAULT_JUDGE_MODEL, show_default=True, help="Judge model identifier")
 @click.option("--samples", type=int, default=DEFAULT_SAMPLES, show_default=True,
               help="Number of samples to judge per dataset (0 = all)")
@@ -383,7 +383,7 @@ def main(
 ) -> None:
     """Judge MT predictions with LLM-as-a-Judge.
 
-    PREDICTIONS can be:
+    PREDICTIONS can be (defaults to results/*.predictions.jsonl when omitted):
     - Direct paths: results/model.predictions.jsonl
     - Model names: LiquidAI/LFM2-350M (resolves to LiquidAI--LFM2-350M*.predictions.jsonl)
     - Glob patterns: results/*.predictions.jsonl or LiquidAI*
@@ -395,8 +395,21 @@ def main(
         raise SystemExit(1)
 
     # Resolve all prediction identifiers to files
+    identifiers: list[str] = list(predictions)
+    if not identifiers:
+        default_files = sorted(RESULTS_DIR.glob("*.predictions.jsonl"))
+        if not default_files:
+            console.print(
+                "[red]No predictions specified and no results/*.predictions.jsonl files found.[/red]"
+            )
+            raise SystemExit(1)
+        identifiers = [str(path) for path in default_files]
+        console.print(
+            f"[yellow]No predictions specified; defaulting to {len(identifiers)} results/*.predictions.jsonl file(s).[/yellow]"
+        )
+
     all_pred_paths: list[Path] = []
-    for identifier in predictions:
+    for identifier in identifiers:
         resolved = resolve_model_to_predictions(identifier, RESULTS_DIR)
         if not resolved:
             console.print(f"[yellow]No predictions found for: {identifier}[/yellow]")
