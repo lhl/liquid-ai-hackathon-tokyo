@@ -99,10 +99,10 @@ def resolve_display_names(mappings: Iterable[str]) -> dict[str, str]:
     return result
 
 
-def format_score(value: float | None) -> str:
+def format_score(value: float | None, decimals: int = 4) -> str:
     if value is None:
         return "—"
-    return f"{value:.4f}"
+    return f"{value:.{decimals}f}"
 
 
 def markdown_table(
@@ -118,12 +118,12 @@ def markdown_table(
     for model, dataset_scores, summary, judge_data in rows:
         row = [model]
         for dataset in datasets:
-            row.append(format_score(dataset_scores.get(dataset)))
-        row.append(format_score(summary))
+            row.append(dataset_scores.get(dataset))
+        row.append(summary)
 
         if include_judge:
             judge_score, fully_correct, num_samples = judge_data
-            row.append(format_score(judge_score))
+            row.append(judge_score)
             if num_samples > 0:
                 row.append(f"{fully_correct}/{num_samples}")
             else:
@@ -131,7 +131,19 @@ def markdown_table(
 
         table_data.append(row)
 
-    return tabulate(table_data, headers=headers, tablefmt="github", numalign="right", stralign="left")
+    # Configure column alignment: right for all except first (Model) column
+    colalign = ["left"] + ["right"] * (len(headers) - 1)
+
+    # Configure float formatting to preserve trailing zeros
+    # 4 decimals for MT scores, 2 decimals for judge scores, no formatting for Perfect column
+    num_mt_cols = len(datasets) + 1  # datasets + MT avg
+    floatfmt_list = [None]  # Model name (no formatting)
+    floatfmt_list.extend([".4f"] * num_mt_cols)  # MT scores
+    if include_judge:
+        floatfmt_list.append(".2f")  # Judge score
+        floatfmt_list.append(None)  # Perfect column (string)
+
+    return tabulate(table_data, headers=headers, tablefmt="github", colalign=colalign, floatfmt=floatfmt_list)
 
 
 def main() -> None:
