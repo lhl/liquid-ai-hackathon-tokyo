@@ -8,6 +8,8 @@ import json
 from pathlib import Path
 from typing import Iterable, OrderedDict
 
+from tabulate import tabulate
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -40,6 +42,35 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     return parser.parse_args()
+
+
+def load_judge_scores(path: Path) -> tuple[float | None, int, int]:
+    """Load LLM judge scores from llmjudge-scores.jsonl file.
+
+    Returns (average_score, fully_correct, num_samples).
+    """
+    if not path.exists():
+        return None, 0, 0
+
+    try:
+        with path.open(encoding="utf-8") as f:
+            for line in f:
+                if not line.strip():
+                    continue
+                record = json.loads(line)
+                if record.get("type") == "summary":
+                    num_samples = record.get("num_samples", 0)
+                    # Only return data if we actually have samples
+                    if num_samples > 0:
+                        return (
+                            record.get("average_score"),
+                            record.get("fully_correct", 0),
+                            num_samples,
+                        )
+    except (json.JSONDecodeError, OSError):
+        pass
+
+    return None, 0, 0
 
 
 def load_scores(path: Path, metric: str) -> tuple[str, dict[str, float | None], float | None]:
@@ -75,21 +106,32 @@ def format_score(value: float | None) -> str:
 
 
 def markdown_table(
-    rows: list[tuple[str, dict[str, float | None], float | None]],
+    rows: list[tuple[str, dict[str, float | None], float | None, tuple[float | None, int, int]]],
     datasets: list[str],
+    include_judge: bool,
 ) -> str:
     headers = ["Model"] + datasets + ["MT avg"]
-    md_lines = [
-        "| " + " | ".join(headers) + " |",
-        "| " + " | ".join("---" if h == "Model" else "---:" for h in headers) + " |",
-    ]
-    for model, dataset_scores, summary in rows:
-        cells = [model]
+    if include_judge:
+        headers.extend(["Judge", "Perfect"])
+
+    table_data = []
+    for model, dataset_scores, summary, judge_data in rows:
+        row = [model]
         for dataset in datasets:
-            cells.append(format_score(dataset_scores.get(dataset)))
-        cells.append(format_score(summary))
-        md_lines.append("| " + " | ".join(cells) + " |")
-    return "\n".join(md_lines)
+            row.append(format_score(dataset_scores.get(dataset)))
+        row.append(format_score(summary))
+
+        if include_judge:
+            judge_score, fully_correct, num_samples = judge_data
+            row.append(format_score(judge_score))
+            if num_samples > 0:
+                row.append(f"{fully_correct}/{num_samples}")
+            else:
+                row.append("—")
+
+        table_data.append(row)
+
+    return tabulate(table_data, headers=headers, tablefmt="github", numalign="right", stralign="left")
 
 
 def main() -> None:
@@ -103,16 +145,28 @@ def main() -> None:
         raise SystemExit("No score files found. Run eval/run-mt.py first or specify paths explicitly.")
 
     display_names = resolve_display_names(args.human_names)
-    collected_rows: list[tuple[str, dict[str, float | None], float | None]] = []
+    collected_rows: list[tuple[str, dict[str, float | None], float | None, tuple[float | None, int, int]]] = []
     all_datasets: "OrderedDict[str, None]" = OrderedDict()
+    has_any_judge_scores = False
 
     for path in score_files:
         stem, datasets, summary = load_scores(path, args.metric)
         all_datasets.update({name: None for name in sorted(datasets)})
         model_name = display_names.get(stem, stem.replace("--", "/").removesuffix(".scores"))
-        collected_rows.append((model_name, datasets, summary))
 
-    table = markdown_table(collected_rows, list(all_datasets.keys()))
+        # Try to load corresponding LLM judge scores
+        # Remove .scores suffix from stem to get base model name
+        base_stem = stem.removesuffix(".scores")
+        judge_path = path.parent / f"{base_stem}.llmjudge-scores.jsonl"
+        if judge_path.exists():
+            judge_score, fully_correct, num_samples = load_judge_scores(judge_path)
+            has_any_judge_scores = True
+        else:
+            judge_score, fully_correct, num_samples = None, 0, 0
+
+        collected_rows.append((model_name, datasets, summary, (judge_score, fully_correct, num_samples)))
+
+    table = markdown_table(collected_rows, list(all_datasets.keys()), has_any_judge_scores)
     print(table)
 
 
