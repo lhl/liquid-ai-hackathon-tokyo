@@ -362,7 +362,7 @@ def compute_summary(judgments: list[dict[str, Any]], judge_model: str, samples: 
 
 
 @click.command(help="Judge machine translation predictions with LLM-as-a-Judge.")
-@click.argument("predictions", type=click.Path(exists=True, path_type=Path), nargs=-1, required=True)
+@click.argument("predictions", nargs=-1, required=True)
 @click.option("--judge", default=DEFAULT_JUDGE_MODEL, show_default=True, help="Judge model identifier")
 @click.option("--samples", type=int, default=DEFAULT_SAMPLES, show_default=True,
               help="Number of samples to judge per dataset (0 = all)")
@@ -373,7 +373,7 @@ def compute_summary(judgments: list[dict[str, Any]], judge_model: str, samples: 
               help="Gemini thinking budget")
 @click.option("--dry-run", is_flag=True, help="Show what would be judged without making API calls")
 def main(
-    predictions: tuple[Path, ...],
+    predictions: tuple[str, ...],
     judge: str,
     samples: int,
     concurrency: int,
@@ -381,12 +381,39 @@ def main(
     thinking_budget: int,
     dry_run: bool,
 ) -> None:
-    """Judge MT predictions with LLM-as-a-Judge."""
+    """Judge MT predictions with LLM-as-a-Judge.
+
+    PREDICTIONS can be:
+    - Direct paths: results/model.predictions.jsonl
+    - Model names: LiquidAI/LFM2-350M (resolves to LiquidAI--LFM2-350M*.predictions.jsonl)
+    - Glob patterns: results/*.predictions.jsonl or LiquidAI*
+    """
 
     # Verify template exists
     if not JUDGE_TEMPLATE.exists():
         console.print(f"[red]Judge template not found: {JUDGE_TEMPLATE}[/red]")
         raise SystemExit(1)
+
+    # Resolve all prediction identifiers to files
+    all_pred_paths: list[Path] = []
+    for identifier in predictions:
+        resolved = resolve_model_to_predictions(identifier, RESULTS_DIR)
+        if not resolved:
+            console.print(f"[yellow]No predictions found for: {identifier}[/yellow]")
+            continue
+        all_pred_paths.extend(resolved)
+
+    if not all_pred_paths:
+        console.print("[red]No prediction files found. Check your paths/model names.[/red]")
+        raise SystemExit(1)
+
+    # Deduplicate while preserving order
+    seen = set()
+    pred_paths = []
+    for path in all_pred_paths:
+        if path not in seen:
+            seen.add(path)
+            pred_paths.append(path)
 
     # Setup API client
     if not dry_run:
@@ -405,10 +432,11 @@ def main(
     console.print(f"[bold green]Judge model:[/bold green] {judge}")
     console.print(f"[bold green]Max samples per dataset:[/bold green] {samples if samples > 0 else 'all'}")
     console.print(f"[bold green]Fixed seed:[/bold green] {FIXED_SEED}")
+    console.print(f"[bold green]Found {len(pred_paths)} prediction file(s)[/bold green]")
     console.print()
 
     # Process each predictions file
-    for pred_path in predictions:
+    for pred_path in pred_paths:
         console.rule(f"[bold cyan]{pred_path.name}[/bold cyan]")
 
         # Determine output path

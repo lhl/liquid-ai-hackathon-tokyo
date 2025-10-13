@@ -7,23 +7,29 @@
 ## Quick Start
 
 ```bash
-# Judge a single model (100 samples per dataset by default)
+# Judge a single model using model name (auto-converts to safe filename)
+python judge-mt.py "LiquidAI/LFM2-350M"  # Finds LiquidAI--LFM2-350M*.predictions.jsonl
+
+# Judge specific model variant by path
 python judge-mt.py results/google--gemma-3-4b-it.sampled-t0_2-p0_9.predictions.jsonl
 
-# Judge multiple models at once
-python judge-mt.py results/LiquidAI--LFM2*.predictions.jsonl
+# Judge multiple models at once using model names
+python judge-mt.py "LiquidAI/LFM2-350M" "google/gemma-3-4b-it"
+
+# Judge using glob patterns
+python judge-mt.py "LiquidAI*" "google*"
 
 # Judge all models
 python judge-mt.py results/*.predictions.jsonl
 
 # Quick test with fewer samples
-python judge-mt.py results/*.predictions.jsonl --samples 10
+python judge-mt.py "LiquidAI/LFM2-350M" --samples 10
 
 # Force re-judge (overwrite existing)
-python judge-mt.py results/*.predictions.jsonl --rerun
+python judge-mt.py "LiquidAI/LFM2-350M" --rerun
 
 # Use different judge model
-python judge-mt.py results/*.predictions.jsonl --judge gemini-2.5-pro
+python judge-mt.py "LiquidAI/LFM2-350M" --judge gemini-2.5-pro
 ```
 
 ## Configuration
@@ -156,21 +162,35 @@ The template receives:
 --dry-run                Show what would be judged without API calls
 ```
 
+## Model Name Resolution
+
+The script intelligently resolves model identifiers to prediction files:
+
+1. **Model names with slashes**: `LiquidAI/LFM2-350M` → `LiquidAI--LFM2-350M*.predictions.jsonl`
+2. **Direct paths**: `results/model.predictions.jsonl` → as-is
+3. **Glob patterns**: `LiquidAI*` → all matching files
+4. **Partial names**: `LFM2` → `LFM2*.predictions.jsonl`
+
+All patterns search in the `results/` directory by default.
+
 ## Examples
 
 ### Testing New Judge Prompt
 ```bash
 # Test with 1 sample to verify prompt works
-python judge-mt.py results/test.predictions.jsonl --samples 1 --dry-run
+python judge-mt.py "LiquidAI/LFM2-350M" --samples 1 --dry-run
 
 # Verify output looks good
-python judge-mt.py results/test.predictions.jsonl --samples 1
+python judge-mt.py "LiquidAI/LFM2-350M" --samples 1
 ```
 
 ### Production Run
 ```bash
-# Judge all models with default settings
+# Judge all models with default settings using model names
 export GEMINI_API_KEY="your-key-here"
+python judge-mt.py "LiquidAI/LFM2-350M" "google/gemma-3-4b-it" "gpt-4o"
+
+# Or judge everything with glob
 python judge-mt.py results/*.predictions.jsonl
 
 # Monitor progress in real-time
@@ -180,13 +200,13 @@ python judge-mt.py results/*.predictions.jsonl
 ### Incremental Updates
 ```bash
 # Run initial judging
-python judge-mt.py results/*.predictions.jsonl
+python judge-mt.py "LiquidAI/LFM2-350M" "google/gemma-3-4b-it"
 
 # Add new model later - only new file gets judged
-python judge-mt.py results/new-model.predictions.jsonl
+python judge-mt.py "openai/gpt-4o"
 
 # Re-run safely - existing judgments are preserved
-python judge-mt.py results/*.predictions.jsonl
+python judge-mt.py "LiquidAI/LFM2-350M" "google/gemma-3-4b-it" "openai/gpt-4o"
 ```
 
 ## Troubleshooting
