@@ -98,6 +98,21 @@ def parse_args() -> argparse.Namespace:
         default=4,
         help="Fallback number of few-shot examples when dataset does not define it.",
     )
+    parser.add_argument(
+        "--chat-template",
+        action="store_true",
+        help="Enable chat template mode using tokenizer.apply_chat_template().",
+    )
+    parser.add_argument(
+        "--prompt",
+        type=Path,
+        help="Jinja2 template for system/instruction message (used with --chat-template).",
+    )
+    parser.add_argument(
+        "--instruct",
+        type=Path,
+        help="Alias for --prompt (Jinja2 template for system/instruction message).",
+    )
     parser.add_argument("--output", type=Path, help="(Deprecated) alias for --scores.")
     parser.add_argument(
         "--scores",
@@ -116,6 +131,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--temperature", type=float, default=0.2, help="Sampling temperature.")
     parser.add_argument("--top-p", type=float, default=0.9, help="Top-p sampling cutoff.")
+    parser.add_argument("--min-p", type=float, default=0.0, help="Min-p sampling cutoff.")
+    parser.add_argument("--repetition-penalty", type=float, default=1.0, help="Repetition penalty.")
     parser.add_argument(
         "--do-sample",
         dest="do_sample",
@@ -293,8 +310,25 @@ def build_run_name(args: argparse.Namespace) -> str:
         variant_parts.append(
             f"sampled-t{format_float_for_name(args.temperature)}-p{format_float_for_name(args.top_p)}"
         )
+        # Add non-default min_p
+        if args.min_p > 0.0:
+            variant_parts.append(f"m{format_float_for_name(args.min_p)}")
+        # Add non-default repetition_penalty
+        if args.repetition_penalty != 1.0:
+            variant_parts.append(f"r{format_float_for_name(args.repetition_penalty)}")
     else:
         variant_parts.append("greedy")
+
+    # Add chat template indicator
+    if args.chat_template:
+        prompt_path = args.prompt or args.instruct
+        if prompt_path:
+            template_name = Path(prompt_path).stem  # e.g., "lfm2.prompt" -> "lfm2"
+            # Remove common suffixes
+            template_name = template_name.replace(".prompt", "").replace(".instruct", "")
+            variant_parts.append(f"ct_{sanitize_component(template_name)}")
+        else:
+            variant_parts.append("ct_none")
 
     if args.split and args.split != "test":
         variant_parts.append(f"split-{sanitize_component(args.split)}")
@@ -366,31 +400,108 @@ def load_dataset_config(
 def prepare_prompts(
     dataset: DatasetConfig,
     dataset_path: Path,
+    tokenizer=None,
+    chat_template_mode: bool = False,
+    system_prompt_template: str | None = None,
 ) -> list[GeneratedSample]:
-    few_shot_samples: list[Sample] = []
-    if dataset.num_few_shots:
-        few_shot_samples = get_few_shot_samples(dataset_path, dataset.num_few_shots)
+    """Prepare prompts for generation.
 
-    prompt_template = get_evaluation_prompt(
-        dataset.instruction,
-        few_shot_samples,
-        dataset.custom_prompt_template,
-        dataset.answer_pattern_id,
-        dataset.language,
-    )
-
+    Args:
+        dataset: Dataset configuration
+        dataset_path: Path to dataset file
+        tokenizer: Tokenizer (required if chat_template_mode=True)
+        chat_template_mode: If True, use tokenizer.apply_chat_template()
+        system_prompt_template: Jinja2 template string for system message (chat template mode only)
+    """
     generated_samples: list[GeneratedSample] = []
-    for sample in dataset.samples:
-        prompt = prompt_template.replace("<%input%>", sample["input"])
-        generated_samples.append(
-            GeneratedSample(
-                input=sample["input"],
-                prompt=prompt,
-                generated="",  # placeholder, filled after inference
-                gold=sample["output"],
-                metadata=sample.get("metadata", {}),
+
+    if chat_template_mode:
+        # Chat template mode: construct messages and apply tokenizer's chat template
+        if tokenizer is None:
+            raise ValueError("tokenizer is required when chat_template_mode=True")
+
+        import jinja2
+
+        # Infer language from dataset name
+        dataset_name_lower = dataset.name.lower()
+        if any(token in dataset_name_lower for token in ("e-to-j", "en-to-ja", "en2ja", "en-ja")):
+            language = "Japanese"
+            target_language = "Japanese"
+        elif any(token in dataset_name_lower for token in ("j-to-e", "ja-to-en", "ja2en", "ja-en")):
+            language = "English"
+            target_language = "English"
+        else:
+            language = "Japanese"  # default
+            target_language = "Japanese"
+            LOGGER.warning(
+                "Unable to infer translation direction from dataset %s; defaulting to Japanese",
+                dataset.name,
             )
+
+        # Render system prompt if provided
+        system_content = None
+        if system_prompt_template:
+            system_template = jinja2.Template(system_prompt_template, keep_trailing_newline=True)
+            system_content = system_template.render(
+                language=language,
+                target_language=target_language,
+                instruction=dataset.instruction,
+            )
+
+        for sample in dataset.samples:
+            # Construct chat messages
+            messages = []
+            if system_content:
+                messages.append({"role": "system", "content": system_content})
+            messages.append({"role": "user", "content": sample["input"]})
+
+            # Apply chat template
+            try:
+                prompt = tokenizer.apply_chat_template(
+                    messages,
+                    tokenize=False,
+                    add_generation_prompt=True,
+                )
+            except Exception as e:
+                LOGGER.error("Failed to apply chat template for sample: %s", e)
+                # Fallback to simple concatenation
+                prompt = system_content + "\n" + sample["input"] if system_content else sample["input"]
+
+            generated_samples.append(
+                GeneratedSample(
+                    input=sample["input"],
+                    prompt=prompt,
+                    generated="",
+                    gold=sample["output"],
+                    metadata=sample.get("metadata", {}),
+                )
+            )
+    else:
+        # Default llm-jp-eval prompting mode
+        few_shot_samples: list[Sample] = []
+        if dataset.num_few_shots:
+            few_shot_samples = get_few_shot_samples(dataset_path, dataset.num_few_shots)
+
+        prompt_template = get_evaluation_prompt(
+            dataset.instruction,
+            few_shot_samples,
+            dataset.custom_prompt_template,
+            dataset.answer_pattern_id,
+            dataset.language,
         )
+
+        for sample in dataset.samples:
+            prompt = prompt_template.replace("<%input%>", sample["input"])
+            generated_samples.append(
+                GeneratedSample(
+                    input=sample["input"],
+                    prompt=prompt,
+                    generated="",
+                    gold=sample["output"],
+                    metadata=sample.get("metadata", {}),
+                )
+            )
+
     return generated_samples
 
 
@@ -403,6 +514,8 @@ def _batch_generate_transformers(
     temperature: float,
     top_p: float,
     do_sample: bool,
+    min_p: float = 0.0,
+    repetition_penalty: float = 1.0,
 ) -> list[str]:
     outputs: list[str] = []
     pad_token_id = tokenizer.pad_token_id
@@ -456,7 +569,14 @@ def _batch_generate_transformers(
                         "pad_token_id": pad_token_id,
                     }
                     if do_sample:
-                        gen_kwargs.update({"temperature": temperature, "top_p": top_p})
+                        gen_kwargs.update({
+                            "temperature": temperature,
+                            "top_p": top_p,
+                        })
+                        if min_p > 0.0:
+                            gen_kwargs["min_p"] = min_p
+                        if repetition_penalty != 1.0:
+                            gen_kwargs["repetition_penalty"] = repetition_penalty
                     generated = model.generate(**tokenized, **gen_kwargs)
             except torch.cuda.OutOfMemoryError as exc:
                 if torch.cuda.is_available():
@@ -511,6 +631,8 @@ def _batch_generate_vllm(
     temperature: float,
     top_p: float,
     do_sample: bool,
+    min_p: float = 0.0,
+    repetition_penalty: float = 1.0,
 ) -> list[str]:
     try:
         from vllm import SamplingParams  # type: ignore[import]
@@ -560,6 +682,11 @@ def _batch_generate_vllm(
             "top_p": top_p,
             "skip_special_tokens": True,
         }
+        if do_sample:
+            if min_p > 0.0:
+                sampling_kwargs["min_p"] = min_p
+            if repetition_penalty != 1.0:
+                sampling_kwargs["repetition_penalty"] = repetition_penalty
         if eos_token_id is not None:
             sampling_kwargs["stop_token_ids"] = [eos_token_id]
         sampling_params = SamplingParams(**sampling_kwargs)
@@ -799,6 +926,8 @@ def batch_generate(
     do_sample: bool,
     engine: str,
     engine_config: dict[str, Any] | None = None,
+    min_p: float = 0.0,
+    repetition_penalty: float = 1.0,
 ) -> list[str]:
     if engine == "vllm":
         return _batch_generate_vllm(
@@ -810,6 +939,8 @@ def batch_generate(
             temperature=temperature,
             top_p=top_p,
             do_sample=do_sample,
+            min_p=min_p,
+            repetition_penalty=repetition_penalty,
         )
     if engine == "openai":
         if engine_config is None:
@@ -844,6 +975,8 @@ def batch_generate(
         temperature=temperature,
         top_p=top_p,
         do_sample=do_sample,
+        min_p=min_p,
+        repetition_penalty=repetition_penalty,
     )
 
 
@@ -881,6 +1014,23 @@ def main() -> None:
     LOGGER.info("Run identifier: %s", run_name)
 
     set_seed()
+
+    # Handle chat template mode
+    chat_template_mode = bool(args.chat_template)
+    system_prompt_template_text: str | None = None
+
+    if chat_template_mode:
+        # Load prompt/instruct template for system message
+        prompt_path = args.prompt or args.instruct
+        if prompt_path:
+            if not prompt_path.is_absolute():
+                prompt_path = REPO_ROOT / prompt_path
+            if not prompt_path.exists():
+                raise FileNotFoundError(f"Prompt template not found: {prompt_path}")
+            system_prompt_template_text = prompt_path.read_text(encoding="utf-8")
+            LOGGER.info("Chat template mode enabled with system prompt from: %s", prompt_path)
+        else:
+            LOGGER.info("Chat template mode enabled without system prompt (user message only)")
 
     excludes = set(DEFAULT_EXCLUDE_DATASETS)
     if args.include_wikicorpus:
@@ -1040,7 +1190,13 @@ def main() -> None:
             args.max_samples,
             args.num_few_shots,
         )
-        samples = prepare_prompts(dataset_cfg, dataset_path)
+        samples = prepare_prompts(
+            dataset_cfg,
+            dataset_path,
+            tokenizer=tokenizer,
+            chat_template_mode=chat_template_mode,
+            system_prompt_template=system_prompt_template_text,
+        )
         sample_count = len(samples)
         total_samples += sample_count
         LOGGER.info(
@@ -1091,6 +1247,8 @@ def main() -> None:
             do_sample=args.do_sample,
             engine=engine,
             engine_config=engine_config,
+            min_p=args.min_p,
+            repetition_penalty=args.repetition_penalty,
         )
 
         for sample, output in zip(samples, generations, strict=False):
