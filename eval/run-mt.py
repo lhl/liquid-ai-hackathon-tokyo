@@ -99,19 +99,13 @@ def parse_args() -> argparse.Namespace:
         help="Fallback number of few-shot examples when dataset does not define it.",
     )
     parser.add_argument(
-        "--chat-template",
-        action="store_true",
-        help="Enable chat template mode using tokenizer.apply_chat_template().",
-    )
-    parser.add_argument(
-        "--prompt",
-        type=Path,
-        help="Jinja2 template for system/instruction message (used with --chat-template).",
-    )
-    parser.add_argument(
-        "--instruct",
-        type=Path,
-        help="Alias for --prompt (Jinja2 template for system/instruction message).",
+        "--format",
+        type=str,
+        help=(
+            "Chat format name (e.g., 'lfm2', 'chotto'). Looks for {format}.system.j2 and {format}.user.j2 templates "
+            "relative to the repo root. Missing system templates fall back to the dataset instruction, missing user "
+            "templates use the raw sample text. Enables chat template mode using tokenizer.apply_chat_template()."
+        ),
     )
     parser.add_argument("--output", type=Path, help="(Deprecated) alias for --scores.")
     parser.add_argument(
@@ -320,15 +314,8 @@ def build_run_name(args: argparse.Namespace) -> str:
         variant_parts.append("greedy")
 
     # Add chat template indicator
-    if args.chat_template:
-        prompt_path = args.prompt or args.instruct
-        if prompt_path:
-            template_name = Path(prompt_path).stem  # e.g., "lfm2.prompt" -> "lfm2"
-            # Remove common suffixes
-            template_name = template_name.replace(".prompt", "").replace(".instruct", "")
-            variant_parts.append(f"ct_{sanitize_component(template_name)}")
-        else:
-            variant_parts.append("ct_none")
+    if args.format:
+        variant_parts.append(f"ct_{sanitize_component(args.format)}")
 
     if args.split and args.split != "test":
         variant_parts.append(f"split-{sanitize_component(args.split)}")
@@ -339,7 +326,7 @@ def build_run_name(args: argparse.Namespace) -> str:
     if getattr(args, "run_tag", None):
         variant_parts.append(sanitize_component(args.run_tag))
 
-    variant = "+".join(part for part in variant_parts if part)
+    variant = "-".join(part for part in variant_parts if part)
     return f"{base}.{variant}" if variant else base
 
 
@@ -403,6 +390,9 @@ def prepare_prompts(
     tokenizer=None,
     chat_template_mode: bool = False,
     system_prompt_template: str | None = None,
+    user_prompt_template: str | None = None,
+    format_name: str | None = None,
+    use_instruction_fallback: bool = False,
 ) -> list[GeneratedSample]:
     """Prepare prompts for generation.
 
@@ -412,6 +402,9 @@ def prepare_prompts(
         tokenizer: Tokenizer (required if chat_template_mode=True)
         chat_template_mode: If True, use tokenizer.apply_chat_template()
         system_prompt_template: Jinja2 template string for system message (chat template mode only)
+        user_prompt_template: Jinja2 template string for user message (chat template mode only)
+        format_name: Name of chat format (for template context/helpful logging)
+        use_instruction_fallback: When True, fall back to dataset instruction if system template missing
     """
     generated_samples: list[GeneratedSample] = []
 
@@ -438,22 +431,62 @@ def prepare_prompts(
                 dataset.name,
             )
 
-        # Render system prompt if provided
-        system_content = None
-        if system_prompt_template:
+        system_template = None
+        if system_prompt_template and system_prompt_template.strip():
             system_template = jinja2.Template(system_prompt_template, keep_trailing_newline=True)
-            system_content = system_template.render(
-                language=language,
-                target_language=target_language,
-                instruction=dataset.instruction,
-            )
+
+        user_template = None
+        if user_prompt_template and user_prompt_template.strip():
+            user_template = jinja2.Template(user_prompt_template, keep_trailing_newline=True)
+
+        fallback_system_content = None
+        if system_template is None and use_instruction_fallback:
+            instruction_text = (dataset.instruction or "").strip()
+            fallback_lines: list[str] = []
+            if instruction_text:
+                fallback_lines.append(instruction_text.rstrip())
+                if "Return ONLY the translated text." not in instruction_text:
+                    fallback_lines.append("Return ONLY the translated text.")
+            else:
+                fallback_lines.append("Return ONLY the translated text.")
+            fallback_system_content = "\n\n".join(fallback_lines)
+
+        base_context = {
+            "language": language,
+            "target_language": target_language,
+            "instruction": dataset.instruction,
+            "dataset_name": dataset.name,
+            "format": format_name,
+        }
 
         for sample in dataset.samples:
+            metadata = sample.get("metadata") or {}
+            if not isinstance(metadata, dict):
+                metadata = {}
+            sample_context = {
+                "text": sample["input"],
+                "metadata": metadata,
+                "conversation_history": metadata.get("conversation_history"),
+            }
+            context = {**base_context, **sample_context}
+
+            # Render system prompt if available
+            system_content = None
+            if system_template is not None:
+                system_content = system_template.render(context)
+            elif fallback_system_content is not None:
+                system_content = fallback_system_content
+
+            # Render user message
+            user_content = sample["input"]
+            if user_template is not None:
+                user_content = user_template.render(context)
+
             # Construct chat messages
             messages = []
             if system_content:
                 messages.append({"role": "system", "content": system_content})
-            messages.append({"role": "user", "content": sample["input"]})
+            messages.append({"role": "user", "content": user_content})
 
             # Apply chat template
             try:
@@ -465,7 +498,10 @@ def prepare_prompts(
             except Exception as e:
                 LOGGER.error("Failed to apply chat template for sample: %s", e)
                 # Fallback to simple concatenation
-                prompt = system_content + "\n" + sample["input"] if system_content else sample["input"]
+                if system_content:
+                    prompt = f"{system_content}\n{user_content}"
+                else:
+                    prompt = user_content
 
             generated_samples.append(
                 GeneratedSample(
@@ -993,6 +1029,158 @@ def save_jsonl(path: Path, records: Iterable[dict]) -> None:
             f.write("\n")
 
 
+def build_settings_dict(args: argparse.Namespace) -> dict[str, Any]:
+    """Build complete settings dictionary with defaults marked."""
+    # Define defaults (must match parse_args defaults)
+    defaults = {
+        "split": "test",
+        "datasets": MT_DATASETS,
+        "exclude_datasets": None,
+        "include_wikicorpus": False,
+        "run_tag": None,
+        "batch_size": 256,
+        "max_samples": -1,
+        "num_few_shots": 4,
+        "format": None,
+        "temperature": 0.2,
+        "top_p": 0.9,
+        "min_p": 0.0,
+        "repetition_penalty": 1.0,
+        "do_sample": True,
+        "extra_output_tokens": 0,
+        "dtype": "auto",
+        "engine": "auto",
+        "vllm_tensor_parallel_size": 1,
+        "vllm_gpu_memory_utilization": 0.8,
+        "vllm_max_model_len": None,
+        "openai_base_url": None,
+        "openai_api_key": None,
+        "openai_max_concurrency": 20,
+        "openai_request_timeout": None,
+        "openai_max_retries": 5,
+        "openai_retry_wait_seconds": 1.0,
+        "openai_batch_completion_window": "24h",
+        "openai_batch_poll_interval": 10.0,
+        "openai_batch_max_requests": 50_000,
+        "openai_batch_description": None,
+        "openai_batch_retain_inputs": False,
+        "device_map": "auto",
+        "trust_remote_code": False,
+        "verbose": False,
+    }
+
+    settings: dict[str, Any] = {
+        "model": args.model,
+        "run_name": getattr(args, "_run_name", None),
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+        "settings": {},
+        "flags": [],
+        "defaults": {},
+    }
+
+    # Build settings with is_default marker
+    for key, default_value in defaults.items():
+        actual_value = getattr(args, key, default_value)
+        is_default = actual_value == default_value
+
+        # Convert Path objects to strings for JSON serialization
+        if isinstance(actual_value, Path):
+            actual_value = str(actual_value)
+        if isinstance(default_value, Path):
+            default_value = str(default_value)
+
+        settings["settings"][key] = {
+            "value": actual_value,
+            "default": default_value,
+            "is_default": is_default,
+        }
+
+    # Build command-line flags that would reproduce this run
+    flags = [args.model]
+
+    # Only add non-default flags
+    if args.split != defaults["split"]:
+        flags.extend(["--split", args.split])
+
+    if args.datasets != defaults["datasets"]:
+        flags.append("--datasets")
+        flags.extend(args.datasets)
+
+    if args.exclude_datasets:
+        flags.append("--exclude-datasets")
+        flags.extend(args.exclude_datasets)
+
+    if args.include_wikicorpus:
+        flags.append("--include-wikicorpus")
+
+    if args.run_tag:
+        flags.extend(["--run-tag", args.run_tag])
+
+    if args.batch_size != defaults["batch_size"]:
+        flags.extend(["--batch-size", str(args.batch_size)])
+
+    if args.max_samples != defaults["max_samples"]:
+        flags.extend(["--max-samples", str(args.max_samples)])
+
+    if args.num_few_shots != defaults["num_few_shots"]:
+        flags.extend(["--num-few-shots", str(args.num_few_shots)])
+
+    if args.format:
+        flags.extend(["--format", args.format])
+
+    if args.temperature != defaults["temperature"]:
+        flags.extend(["--temperature", str(args.temperature)])
+
+    if args.top_p != defaults["top_p"]:
+        flags.extend(["--top-p", str(args.top_p)])
+
+    if args.min_p != defaults["min_p"]:
+        flags.extend(["--min-p", str(args.min_p)])
+
+    if args.repetition_penalty != defaults["repetition_penalty"]:
+        flags.extend(["--repetition-penalty", str(args.repetition_penalty)])
+
+    if not args.do_sample:
+        flags.append("--no-sample")
+
+    if args.extra_output_tokens != defaults["extra_output_tokens"]:
+        flags.extend(["--extra-output-tokens", str(args.extra_output_tokens)])
+
+    if args.dtype != defaults["dtype"]:
+        flags.extend(["--dtype", args.dtype])
+
+    if args.engine != defaults["engine"]:
+        flags.extend(["--engine", args.engine])
+
+    if args.vllm_tensor_parallel_size != defaults["vllm_tensor_parallel_size"]:
+        flags.extend(["--vllm-tensor-parallel-size", str(args.vllm_tensor_parallel_size)])
+
+    if args.vllm_gpu_memory_utilization != defaults["vllm_gpu_memory_utilization"]:
+        flags.extend(["--vllm-gpu-memory-utilization", str(args.vllm_gpu_memory_utilization)])
+
+    if args.vllm_max_model_len:
+        flags.extend(["--vllm-max-model-len", str(args.vllm_max_model_len)])
+
+    if args.trust_remote_code:
+        flags.append("--trust-remote-code")
+
+    if args.verbose:
+        flags.append("--verbose")
+
+    settings["flags"] = flags
+
+    return settings
+
+
+def save_settings(path: Path, args: argparse.Namespace) -> None:
+    """Save run settings to JSON file."""
+    settings = build_settings_dict(args)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as f:
+        json.dump(settings, f, indent=2, ensure_ascii=False)
+        f.write("\n")
+
+
 def main() -> None:
     args = parse_args()
     force_greedy = False
@@ -1003,6 +1191,7 @@ def main() -> None:
             force_greedy = True
         args.do_sample = False
     run_name = build_run_name(args)
+    args._run_name = run_name  # Store for settings
     results_dir = REPO_ROOT / "results"
 
     if args.log_file is None:
@@ -1016,21 +1205,62 @@ def main() -> None:
     set_seed()
 
     # Handle chat template mode
-    chat_template_mode = bool(args.chat_template)
+    chat_template_mode = bool(args.format)
     system_prompt_template_text: str | None = None
+    user_prompt_template_text: str | None = None
+    use_instruction_fallback = False
 
     if chat_template_mode:
-        # Load prompt/instruct template for system message
-        prompt_path = args.prompt or args.instruct
-        if prompt_path:
-            if not prompt_path.is_absolute():
-                prompt_path = REPO_ROOT / prompt_path
-            if not prompt_path.exists():
-                raise FileNotFoundError(f"Prompt template not found: {prompt_path}")
-            system_prompt_template_text = prompt_path.read_text(encoding="utf-8")
-            LOGGER.info("Chat template mode enabled with system prompt from: %s", prompt_path)
+        format_key = args.format
+        format_base_path = Path(format_key)
+        if not format_base_path.is_absolute():
+            format_base_path = REPO_ROOT / format_base_path
+
+        system_template_path = format_base_path.with_suffix(".system.j2")
+        user_template_path = format_base_path.with_suffix(".user.j2")
+
+        if system_template_path.exists():
+            system_prompt_template_text = system_template_path.read_text(encoding="utf-8")
+            if system_prompt_template_text.strip():
+                LOGGER.info(
+                    "Chat format '%s' using system template: %s",
+                    args.format,
+                    system_template_path,
+                )
+            else:
+                LOGGER.info(
+                    "Chat format '%s' system template %s is empty; omitting system message.",
+                    args.format,
+                    system_template_path,
+                )
         else:
-            LOGGER.info("Chat template mode enabled without system prompt (user message only)")
+            use_instruction_fallback = True
+            LOGGER.info(
+                "Chat format '%s' missing system template %s; falling back to dataset instruction.",
+                args.format,
+                system_template_path,
+            )
+
+        if user_template_path.exists():
+            user_prompt_template_text = user_template_path.read_text(encoding="utf-8")
+            if user_prompt_template_text.strip():
+                LOGGER.info(
+                    "Chat format '%s' using user template: %s",
+                    args.format,
+                    user_template_path,
+                )
+            else:
+                LOGGER.info(
+                    "Chat format '%s' user template %s is empty; using raw sample text.",
+                    args.format,
+                    user_template_path,
+                )
+        else:
+            LOGGER.info(
+                "Chat format '%s' missing user template %s; using raw sample text.",
+                args.format,
+                user_template_path,
+            )
 
     excludes = set(DEFAULT_EXCLUDE_DATASETS)
     if args.include_wikicorpus:
@@ -1196,6 +1426,9 @@ def main() -> None:
             tokenizer=tokenizer,
             chat_template_mode=chat_template_mode,
             system_prompt_template=system_prompt_template_text,
+            user_prompt_template=user_prompt_template_text,
+            format_name=args.format,
+            use_instruction_fallback=use_instruction_fallback,
         )
         sample_count = len(samples)
         total_samples += sample_count
@@ -1319,6 +1552,11 @@ def main() -> None:
     if args.predictions and prediction_records:
         save_jsonl(args.predictions, prediction_records)
         LOGGER.info("Saved prediction records to %s", args.predictions)
+
+    # Save settings for replicability
+    settings_path = results_dir / f"{run_name}.settings.json"
+    save_settings(settings_path, args)
+    LOGGER.info("Saved run settings to %s", settings_path)
 
     LOGGER.info("MT average (%s): %.4f", default_metric, mt_average)
 

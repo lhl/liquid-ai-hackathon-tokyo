@@ -1,0 +1,14 @@
+Translate the below line into {{ target_language }}. Return only the translated text and nothing else.
+
+{% if conversation_history %}
+Here is some prior context from the conversation to improve translation quality.
+****previous context****
+{% for line in conversation_history %}
+{{ line }}
+{% endfor %}
+****end previous context****
+
+{% endif %}
+****LINE TO TRANSLATE****
+{{ text }}
+********

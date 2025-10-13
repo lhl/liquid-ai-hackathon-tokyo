@@ -10,6 +10,7 @@
 ## Generation Settings
 - **Greedy / Liquid AI recommendation** — leave sampling disabled (`--do-sample` omitted, `--temperature 0`, `--top-p 1.0`).
 - **Chotto baseline** — `--do-sample --temperature 0.2 --top-p 0.9`.
+- **LFM2 chat formatting** — pass `--format lfm2` to wrap prompts with `<|im_start|>` chat tokens and enforce the required system prompts (`Translate to Japanese.` / `Translate to English.` selected per dataset direction).
 - The script respects CLI overrides per backend (`transformers`, `vllm`, `openai`).
 - COMET scoring now auto-detects GPU availability (respects `CUDA_VISIBLE_DEVICES`); override with `LLM_JP_EVAL_COMET_GPUS=0` for CPU or set an explicit count.
 - WikiCorpus splits are skipped by default; pass `--include-wikicorpus` for full runs or `--exclude-datasets` to add/remove specific sets.
@@ -18,8 +19,8 @@
 ## Command Examples
 ```bash
 # LFM2 models (greedy decoding)
-CUDA_VISIBLE_DEVICES=1 python run-mt.py LiquidAI/LFM2-350M-ENJP-MT
-CUDA_VISIBLE_DEVICES=2 python run-mt.py LiquidAI/LFM2-350M
+CUDA_VISIBLE_DEVICES=1 python run-mt.py LiquidAI/LFM2-350M-ENJP-MT --format lfm2
+CUDA_VISIBLE_DEVICES=2 python run-mt.py LiquidAI/LFM2-350M --format lfm2
 
 # Chotto models with sampling
 CUDA_VISIBLE_DEVICES=0 ./run-mt.py shisa-ai/chotto-14b-20251007-dpo-openrlhf \
@@ -42,3 +43,24 @@ CUDA_VISIBLE_DEVICES=3 ./run-mt.py google/gemma-3-4b-it --do-sample --temperatur
 - Override locations with `--results-dir`, `--scores`, `--predictions`, or `--log-file` when runs are stored elsewhere.
 
 Record new runs by appending the command, model revision, and output artifacts here so the team can reproduce results when llm-jp-eval updates.
+
+## Prompting
+By default, llm-jp-eval does NOT use chat templates. Instead, it uses a custom Jinja2-based prompt template defined in `llm-jp-eval/src/llm_jp_eval/prompts.py`. The prompts look like this:
+```
+### 指示
+これから提示する英語の文章を日本語に翻訳してください。必ず日本語の訳文を出力してください。
+
+<examples>
+  <example_1>
+  ### 入力:
+  Steve Wright, yesterday convicted of...
+  ### 応答:
+  昨日、スティーヴ・ライトは、5人の女性を...
+  </example_1>
+...
+</examples>
+
+### 入力:
+Major British charity Comic Relief has invested money...
+### 応答:
+```

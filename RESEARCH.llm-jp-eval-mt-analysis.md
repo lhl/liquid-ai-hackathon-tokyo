@@ -27,6 +27,8 @@
 
 ## Prompt & Evaluation Pipeline
 - Prompt templates are language-aware Jinja snippets that compose instruction, exemplars, and input before the output slot (`src/llm_jp_eval/prompts.py`:1-53, `run-mt.py:208-227`).
+- By default the rendered prompt is passed as a plain text user turn with no chat wrapper (`run-mt.py:368-387`, `run-mt.py:620-707`).
+- Added `--prompt-template lfm2` for models that expect Meta-style chat prompts; it injects `<|im_start|>` tags and swaps the system message to `Translate to Japanese.` or `Translate to English.` based on dataset direction (`run-mt.py:904-939`, `lfm2.j2`).
 - The evaluator merges dataset metadata with global config, materialises JSON prompt packs, and writes them to disk for reuse during inference (`src/llm_jp_eval/evaluator.py`:60-162).
 - Answer extraction leverages `AnswerPatternId.CUSTOM`, trimming to the first paragraph to form the candidate translation (`src/llm_jp_eval/jaster/base.py`:88-152).
 - Length ceilings must be respected in generation configs to prevent truncation; align `max_new_tokens` with dataset caps.
