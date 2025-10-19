@@ -1,0 +1,87 @@
+{
+  "model": "shisa-ai/shisa-v2",
+  "run_name": "shisa-ai--shisa-v2.1c-lfm2-350m-sft3-tlonly.sampled-t0_2-p0_9",
+  "timestamp": "unknown (backfilled)",
+  "settings": {
+    "split": {
+      "value": "test",
+      "default": "test",
+      "is_default": true
+    },
+    "datasets": {
+      "value": [
+        "alt-e-to-j",
+        "alt-j-to-e"
+      ],
+      "default": [
+        "alt-e-to-j",
+        "alt-j-to-e"
+      ],
+      "is_default": true
+    },
+    "temperature": {
+      "value": 0.2,
+      "default": 0.2,
+      "is_default": true
+    },
+    "top_p": {
+      "value": 0.9,
+      "default": 0.9,
+      "is_default": true
+    },
+    "min_p": {
+      "value": 0.0,
+      "default": 0.0,
+      "is_default": true
+    },
+    "repetition_penalty": {
+      "value": 1.0,
+      "default": 1.0,
+      "is_default": true
+    },
+    "do_sample": {
+      "value": true,
+      "default": true,
+      "is_default": true
+    },
+    "max_samples": {
+      "value": -1,
+      "default": -1,
+      "is_default": true
+    },
+    "format": {
+      "value": null,
+      "default": null,
+      "is_default": true
+    },
+    "batch_size": {
+      "value": 256,
+      "default": 256,
+      "is_default": true
+    },
+    "num_few_shots": {
+      "value": 4,
+      "default": 4,
+      "is_default": true
+    },
+    "extra_output_tokens": {
+      "value": 0,
+      "default": 0,
+      "is_default": true
+    },
+    "dtype": {
+      "value": "auto",
+      "default": "auto",
+      "is_default": true
+    },
+    "engine": {
+      "value": "auto",
+      "default": "auto",
+      "is_default": true
+    }
+  },
+  "flags": [
+    "shisa-ai/shisa-v2"
+  ],
+  "note": "This settings file was backfilled from the run name. Some settings may be approximate."
+}
