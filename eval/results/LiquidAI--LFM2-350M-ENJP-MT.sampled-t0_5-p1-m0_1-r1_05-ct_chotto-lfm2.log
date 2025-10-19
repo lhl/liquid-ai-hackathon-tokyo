@@ -1,0 +1,20 @@
+2025-10-13 13:38:13,606 [INFO] Run identifier: LiquidAI--LFM2-350M-ENJP-MT.sampled-t0_5-p1-m0_1-r1_05-ct_chotto-lfm2
+2025-10-13 13:38:13,607 [INFO] Chat format 'chotto-lfm2' using system template: /home/lhl/liquid-ai-hackathon-tokyo/eval/chotto-lfm2.system.j2
+2025-10-13 13:38:13,607 [INFO] Chat format 'chotto-lfm2' using user template: /home/lhl/liquid-ai-hackathon-tokyo/eval/chotto-lfm2.user.j2
+2025-10-13 13:38:13,607 [INFO] Skipping datasets: wikicorpus-e-to-j, wikicorpus-j-to-e
+2025-10-13 13:38:13,607 [INFO] Logging to /home/lhl/liquid-ai-hackathon-tokyo/eval/results/LiquidAI--LFM2-350M-ENJP-MT.sampled-t0_5-p1-m0_1-r1_05-ct_chotto-lfm2.log
+2025-10-13 13:38:13,607 [INFO] Max samples per dataset: all
+2025-10-13 13:38:13,607 [INFO] Engine auto-detected: using vllm backend.
+2025-10-13 13:38:13,607 [INFO] Loading model LiquidAI/LFM2-350M-ENJP-MT with engine vllm
+2025-10-13 13:38:26,110 [INFO] Prepared dataset alt-e-to-j with 1010 samples (max output tokens 250)
+2025-10-13 13:38:26,136 [INFO] Prepared dataset alt-j-to-e with 1010 samples (max output tokens 500)
+2025-10-13 13:38:30,448 [INFO] Encoder model frozen.
+2025-10-13 13:38:30,578 [INFO] Total samples queued across datasets: 2020
+2025-10-13 13:38:30,578 [INFO] Evaluating alt-e-to-j with 1010 samples
+2025-10-13 13:38:45,705 [INFO] alt-e-to-j scores: ool=0.0000, bleu_ja=1.9915, bert_score_ja_f1=0.6792, comet_wmt22=0.6044
+2025-10-13 13:38:45,705 [INFO] Evaluating alt-j-to-e with 1010 samples
+2025-10-13 13:39:06,476 [INFO] alt-j-to-e scores: ool=0.0000, bleu_en=8.1785, bert_score_en_f1=0.8776, comet_wmt22=0.6444
+2025-10-13 13:39:06,476 [INFO] Saved dataset-level results to /home/lhl/liquid-ai-hackathon-tokyo/eval/results/LiquidAI--LFM2-350M-ENJP-MT.sampled-t0_5-p1-m0_1-r1_05-ct_chotto-lfm2.scores.jsonl
+2025-10-13 13:39:06,503 [INFO] Saved prediction records to /home/lhl/liquid-ai-hackathon-tokyo/eval/results/LiquidAI--LFM2-350M-ENJP-MT.sampled-t0_5-p1-m0_1-r1_05-ct_chotto-lfm2.predictions.jsonl
+2025-10-13 13:39:06,504 [INFO] Saved run settings to /home/lhl/liquid-ai-hackathon-tokyo/eval/results/LiquidAI--LFM2-350M-ENJP-MT.sampled-t0_5-p1-m0_1-r1_05-ct_chotto-lfm2.settings.json
+2025-10-13 13:39:06,504 [INFO] MT average (comet_wmt22): 0.6244

@@ -105,6 +105,9 @@ class PredictionRecord:
     char_f1: Optional[float]
     metadata: Dict[str, Any]
     raw: Dict[str, Any]
+    judge_score: Optional[int] = None
+    judge_correct: Optional[int] = None
+    judge_justification: Optional[str] = None
 
     @property
     def is_failure(self) -> bool:
@@ -124,6 +127,12 @@ class DatasetRun:
     num_samples: int
     default_metric: str
     default_metric_score: float
+    judge_average_score: Optional[float] = None
+    judge_correct_rate: Optional[float] = None
+    judge_samples: int = 0
+    judge_average_score: Optional[float]
+    judge_correct_rate: Optional[float]
+    judge_samples: int
 
     @property
     def total(self) -> int:
@@ -138,6 +147,9 @@ class ModelData:
     summary_score: Optional[float]
     summary_metric: Optional[str]
     summary_datasets: List[str]
+    judge_summary_average: Optional[float] = None
+    judge_summary_correct_rate: Optional[float] = None
+    judge_summary_samples: int = 0
 
 
 def load_model_scores(scores_path: Path) -> tuple[Dict[str, Dict[str, Any]], Optional[Dict[str, Any]]]:
@@ -162,7 +174,68 @@ def load_model_scores(scores_path: Path) -> tuple[Dict[str, Dict[str, Any]], Opt
     return dataset_scores, summary
 
 
-def load_model_predictions(predictions_path: Path, dataset_filter: Optional[str] = None) -> List[PredictionRecord]:
+def load_judge_data(
+    safe_model: str,
+    results_dir: Path,
+) -> tuple[Dict[tuple[str, str], Dict[str, Any]], Dict[str, Dict[str, Any]], Optional[Dict[str, Any]]]:
+    """Load LLM judge results if available for a given run."""
+    judge_path = results_dir / f"{safe_model}.llmjudge-scores.jsonl"
+    if not judge_path.exists():
+        return {}, {}, None
+
+    per_prediction: Dict[tuple[str, str], Dict[str, Any]] = {}
+    per_dataset_accumulator: Dict[str, Dict[str, Any]] = {}
+    summary_record: Optional[Dict[str, Any]] = None
+
+    with judge_path.open("r", encoding="utf-8") as src:
+        for line in src:
+            line = line.strip()
+            if not line:
+                continue
+            data = json.loads(line)
+            record_type = data.get("type")
+            if record_type == "judgment":
+                dataset = data.get("target_dataset", "unknown")
+                pred_id = str(data.get("id"))
+                per_prediction[(dataset, pred_id)] = data
+
+                score = safe_int(data.get("score"))
+                correct = safe_int(data.get("correct"))
+                accumulator = per_dataset_accumulator.setdefault(
+                    dataset,
+                    {"scores": [], "correct": 0, "count": 0},
+                )
+                if score is not None:
+                    accumulator["scores"].append(score)
+                if correct is not None:
+                    accumulator["correct"] += correct
+                accumulator["count"] += 1
+            elif record_type == "summary":
+                summary_record = data
+
+    per_dataset_summary: Dict[str, Dict[str, Any]] = {}
+    for dataset, stats in per_dataset_accumulator.items():
+        count = stats["count"]
+        if count <= 0:
+            continue
+        avg_score = mean(stats["scores"]) if stats["scores"] else None
+        correct_rate = (
+            stats["correct"] / count if count > 0 else None
+        )
+        per_dataset_summary[dataset] = {
+            "judge_average_score": avg_score,
+            "judge_correct_rate": correct_rate,
+            "judge_samples": count,
+        }
+
+    return per_prediction, per_dataset_summary, summary_record
+
+
+def load_model_predictions(
+    predictions_path: Path,
+    dataset_filter: Optional[str] = None,
+    judge_lookup: Optional[Dict[tuple[str, str], Dict[str, Any]]] = None,
+) -> List[PredictionRecord]:
     """Load predictions.jsonl, optionally filtering by dataset"""
     records: List[PredictionRecord] = []
 
@@ -182,16 +255,23 @@ def load_model_predictions(predictions_path: Path, dataset_filter: Optional[str]
             if dataset_filter and dataset != dataset_filter:
                 continue
 
+            pred_id = str(data.get("id", str(idx)))
+
+            judge_data = judge_lookup.get((dataset, pred_id)) if judge_lookup else None
+
             record = PredictionRecord(
                 index=idx,
                 dataset=dataset,
-                pred_id=data.get("id", str(idx)),
+                pred_id=pred_id,
                 input_text=data.get("input", ""),
                 prediction=data.get("pred", ""),
                 reference=data.get("true", ""),
                 exact_match=safe_int(data.get("exact")),
                 char_f1=safe_float(data.get("char_f1")),
                 metadata=data.get("metadata") or {},
+                judge_score=safe_int(judge_data.get("score")) if judge_data else None,
+                judge_correct=safe_int(judge_data.get("correct")) if judge_data else None,
+                judge_justification=judge_data.get("justification") if judge_data else None,
                 raw=data,
             )
             records.append(record)
@@ -224,6 +304,7 @@ def load_models(dataset: str, results_dir: Path) -> List[ModelData]:
 
         # Load predictions
         predictions_file = results_dir / f"{safe_model}.predictions.jsonl"
+        judge_lookup, judge_dataset_stats, judge_summary = load_judge_data(safe_model, results_dir)
 
         # Create model data
         model = ModelData(
@@ -233,6 +314,9 @@ def load_models(dataset: str, results_dir: Path) -> List[ModelData]:
             summary_score=summary.get("score") if summary else None,
             summary_metric=summary.get("metric") if summary else None,
             summary_datasets=summary.get("datasets", []) if summary else [],
+            judge_summary_average=safe_float(judge_summary.get("average_score")) if judge_summary else None,
+            judge_summary_correct_rate=safe_float(judge_summary.get("fully_correct_rate")) if judge_summary else None,
+            judge_summary_samples=safe_int(judge_summary.get("num_samples")) if judge_summary else 0,
         )
 
         # Create dataset runs
@@ -241,7 +325,13 @@ def load_models(dataset: str, results_dir: Path) -> List[ModelData]:
             if dataset != "all" and dataset != dataset_name:
                 continue
 
-            predictions = load_model_predictions(predictions_file, dataset_name)
+            predictions = load_model_predictions(
+                predictions_file,
+                dataset_name,
+                judge_lookup,
+            )
+
+            judge_metrics = judge_dataset_stats.get(dataset_name, {})
 
             dataset_run = DatasetRun(
                 dataset=dataset_name,
@@ -251,6 +341,9 @@ def load_models(dataset: str, results_dir: Path) -> List[ModelData]:
                 num_samples=dataset_info.get("num_samples", 0),
                 default_metric=dataset_info.get("default_metric", ""),
                 default_metric_score=dataset_info.get("default_metric_score", 0.0),
+                judge_average_score=safe_float(judge_metrics.get("judge_average_score")),
+                judge_correct_rate=safe_float(judge_metrics.get("judge_correct_rate")),
+                judge_samples=safe_int(judge_metrics.get("judge_samples")) or 0,
             )
             model.dataset_runs.append(dataset_run)
 
@@ -269,6 +362,10 @@ def format_run_title(run: DatasetRun) -> Text:
     text.append(f" • {run.total} samples")
     if run.default_metric and run.default_metric_score is not None:
         text.append(f" • {run.default_metric}: {run.default_metric_score:.4f}")
+    if run.judge_average_score is not None:
+        text.append(f" • judge_avg: {run.judge_average_score:.2f}")
+    if run.judge_correct_rate is not None:
+        text.append(f" • judge_acc: {run.judge_correct_rate:.1%}")
     return text
 
 
@@ -282,6 +379,9 @@ def build_record_renderable(record: PredictionRecord) -> Group:
         header.append(f" · char_f1: {record.char_f1:.3f}")
     if record.exact_match is not None:
         header.append(f" · exact: {record.exact_match}")
+    if record.judge_score is not None:
+        judge_status = "✓" if record.judge_correct == 1 else "✗" if record.judge_correct == 0 else "?"
+        header.append(f" · judge: {record.judge_score}{judge_status}")
 
     table = Table.grid(padding=(0, 1))
     table.add_column(justify="right", width=12, style="bold", no_wrap=True)
@@ -290,6 +390,13 @@ def build_record_renderable(record: PredictionRecord) -> Group:
     table.add_row("Input", "|", Text(record.input_text))
     table.add_row("Prediction", "|", Text(record.prediction, style="cyan"))
     table.add_row("Reference", "|", Text(record.reference, style="green"))
+    if record.judge_score is not None:
+        judge_summary = f"Score {record.judge_score}"
+        if record.judge_correct is not None:
+            judge_summary += " (correct)" if record.judge_correct == 1 else " (incorrect)"
+        table.add_row("LLM Judge", "|", Text(judge_summary, style="magenta"))
+        if record.judge_justification:
+            table.add_row("Justification", "|", Text(record.judge_justification, style="dim"))
     return Group(header, table)
 
 
@@ -346,6 +453,11 @@ if App is not None:
             label = model.display_name
             if model.summary_score is not None and model.summary_metric:
                 label += f" ({model.summary_metric}: {model.summary_score:.4f})"
+            if model.judge_summary_average is not None:
+                judge_label = f"judge_avg {model.judge_summary_average:.2f}"
+                if model.judge_summary_correct_rate is not None:
+                    judge_label += f", acc {model.judge_summary_correct_rate:.1%}"
+                label += f" [{judge_label}]"
             super().__init__(Static(label))
             self.model = model
 
@@ -404,9 +516,11 @@ if App is not None:
         BINDINGS = [
             ("q", "quit", "Quit"),
             ("f", "toggle_failures", "Toggle failures"),
+            ("j", "toggle_judged", "Toggle judged"),
         ]
 
         show_failures_only = reactive(False)
+        show_judged_only = reactive(False)
 
         def __init__(
             self,
@@ -448,7 +562,13 @@ if App is not None:
         def action_toggle_failures(self) -> None:
             self.show_failures_only = not self.show_failures_only
 
+        def action_toggle_judged(self) -> None:
+            self.show_judged_only = not self.show_judged_only
+
         def watch_show_failures_only(self, _: bool) -> None:
+            self._refresh_content()
+
+        def watch_show_judged_only(self, _: bool) -> None:
             self._refresh_content()
 
         def on_list_view_highlighted(self, event: ListView.Highlighted) -> None:
@@ -471,6 +591,7 @@ if App is not None:
             self.selected_model = None
             self.selected_run = None
             self.show_failures_only = False
+            self.show_judged_only = False
             self._populate_models()
 
         def _populate_models(self) -> None:
@@ -553,9 +674,15 @@ if App is not None:
             records = self.selected_run.predictions
             if self.show_failures_only:
                 records = [record for record in records if record.is_failure]
+            if self.show_judged_only:
+                records = [record for record in records if record.judge_score is not None]
             summary_text = f"Showing {len(records)} of {self.selected_run.total} predictions"
             if self.show_failures_only:
                 summary_text += " (failures only)"
+            if self.show_judged_only:
+                summary_text += " (judged only)"
+            if self.selected_run.judge_samples:
+                summary_text += f" · judged: {self.selected_run.judge_samples}"
             summary.update(summary_text)
 
             if not records:

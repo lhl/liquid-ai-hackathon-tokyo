@@ -73,3 +73,7 @@
 3. Use `--engine openai-batch` for cheap/large OpenAI runs; the helper uploads dataset-sized JSONL files, polls the Batch API, and reconciles `custom_id` keys when merging responses. Stick with `--engine openai` when you need immediate completions.
 4. Cache datasets via `python -m llm_jp_eval.preprocess --targets alt-j-to-e ...` ahead of time to eliminate download latency.
 5. Capture command history and key findings in the research logs referenced in `README.md` for smooth agent handoffs.
+
+## 2025-10-13
+- Added `report_judge_distribution.py` for quick judge score breakdowns (mean/median, per-rating share, Useful ≥3, Perfect =5, sparkline). Example run: `python report_judge_distribution.py --ascii-only`.
+- Captured viewer/report deps in `requirements.txt`; install with `pip install -r requirements.txt` when bootstrapping a fresh environment.

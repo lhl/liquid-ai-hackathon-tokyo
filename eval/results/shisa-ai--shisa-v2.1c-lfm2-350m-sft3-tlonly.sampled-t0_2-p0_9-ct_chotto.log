@@ -1,0 +1,20 @@
+2025-10-13 13:20:29,156 [INFO] Run identifier: shisa-ai--shisa-v2.1c-lfm2-350m-sft3-tlonly.sampled-t0_2-p0_9-ct_chotto
+2025-10-13 13:20:29,156 [INFO] Chat format 'chotto' system template /home/lhl/liquid-ai-hackathon-tokyo/eval/chotto.system.j2 is empty; omitting system message.
+2025-10-13 13:20:29,156 [INFO] Chat format 'chotto' using user template: /home/lhl/liquid-ai-hackathon-tokyo/eval/chotto.user.j2
+2025-10-13 13:20:29,156 [INFO] Skipping datasets: wikicorpus-e-to-j, wikicorpus-j-to-e
+2025-10-13 13:20:29,156 [INFO] Logging to /home/lhl/liquid-ai-hackathon-tokyo/eval/results/shisa-ai--shisa-v2.1c-lfm2-350m-sft3-tlonly.sampled-t0_2-p0_9-ct_chotto.log
+2025-10-13 13:20:29,157 [INFO] Max samples per dataset: all
+2025-10-13 13:20:29,157 [INFO] Engine auto-detected: using vllm backend.
+2025-10-13 13:20:29,157 [INFO] Loading model shisa-ai/shisa-v2.1c-lfm2-350m-sft3-tlonly with engine vllm
+2025-10-13 13:20:41,407 [INFO] Prepared dataset alt-e-to-j with 1010 samples (max output tokens 250)
+2025-10-13 13:20:41,426 [INFO] Prepared dataset alt-j-to-e with 1010 samples (max output tokens 500)
+2025-10-13 13:20:45,621 [INFO] Encoder model frozen.
+2025-10-13 13:20:45,750 [INFO] Total samples queued across datasets: 2020
+2025-10-13 13:20:45,750 [INFO] Evaluating alt-e-to-j with 1010 samples
+2025-10-13 13:20:54,172 [INFO] alt-e-to-j scores: ool=0.0000, bleu_ja=13.5752, bert_score_ja_f1=0.8544, comet_wmt22=0.9014
+2025-10-13 13:20:54,172 [INFO] Evaluating alt-j-to-e with 1010 samples
+2025-10-13 13:21:02,222 [INFO] alt-j-to-e scores: ool=0.0000, bleu_en=14.9163, bert_score_en_f1=0.9470, comet_wmt22=0.8716
+2025-10-13 13:21:02,222 [INFO] Saved dataset-level results to /home/lhl/liquid-ai-hackathon-tokyo/eval/results/shisa-ai--shisa-v2.1c-lfm2-350m-sft3-tlonly.sampled-t0_2-p0_9-ct_chotto.scores.jsonl
+2025-10-13 13:21:02,243 [INFO] Saved prediction records to /home/lhl/liquid-ai-hackathon-tokyo/eval/results/shisa-ai--shisa-v2.1c-lfm2-350m-sft3-tlonly.sampled-t0_2-p0_9-ct_chotto.predictions.jsonl
+2025-10-13 13:21:02,244 [INFO] Saved run settings to /home/lhl/liquid-ai-hackathon-tokyo/eval/results/shisa-ai--shisa-v2.1c-lfm2-350m-sft3-tlonly.sampled-t0_2-p0_9-ct_chotto.settings.json
+2025-10-13 13:21:02,244 [INFO] MT average (comet_wmt22): 0.8865

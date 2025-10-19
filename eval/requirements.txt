@@ -1,0 +1,8 @@
+click>=8.1
+google-genai>=0.5
+Jinja2>=3.1
+rich>=13.7
+tabulate>=0.9
+textual>=0.58
+torch>=2.2
+transformers>=4.44

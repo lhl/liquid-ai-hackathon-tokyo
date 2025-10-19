@@ -1,0 +1,8 @@
+2025-10-13 13:24:25,189 [INFO] Run identifier: shisa-ai--chotto-14b-20251007-dpo-openrlf.sampled-t0_2-p0_9-ct_chotto
+2025-10-13 13:24:25,190 [INFO] Chat format 'chotto' system template /home/lhl/liquid-ai-hackathon-tokyo/eval/chotto.system.j2 is empty; omitting system message.
+2025-10-13 13:24:25,190 [INFO] Chat format 'chotto' using user template: /home/lhl/liquid-ai-hackathon-tokyo/eval/chotto.user.j2
+2025-10-13 13:24:25,190 [INFO] Skipping datasets: wikicorpus-e-to-j, wikicorpus-j-to-e
+2025-10-13 13:24:25,190 [INFO] Logging to /home/lhl/liquid-ai-hackathon-tokyo/eval/results/shisa-ai--chotto-14b-20251007-dpo-openrlf.sampled-t0_2-p0_9-ct_chotto.log
+2025-10-13 13:24:25,190 [INFO] Max samples per dataset: all
+2025-10-13 13:24:25,190 [INFO] Engine auto-detected: using vllm backend.
+2025-10-13 13:24:25,190 [INFO] Loading model shisa-ai/chotto-14b-20251007-dpo-openrlf with engine vllm

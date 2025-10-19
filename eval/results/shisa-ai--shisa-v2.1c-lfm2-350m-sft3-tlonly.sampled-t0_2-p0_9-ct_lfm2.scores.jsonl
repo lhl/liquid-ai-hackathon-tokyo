@@ -1,0 +1,3 @@
+{"type": "dataset", "dataset": "alt-e-to-j", "num_samples": 1010, "metrics": {"ool": 0.0, "bleu_ja": 11.785344835203611, "bert_score_ja_f1": 0.8307073712348938, "comet_wmt22": 0.8848276441345121}, "default_metric": "comet_wmt22", "default_metric_score": 0.8848276441345121}
+{"type": "dataset", "dataset": "alt-j-to-e", "num_samples": 1010, "metrics": {"ool": 0.0, "bleu_en": 10.500204304994684, "bert_score_en_f1": 0.9130633473396301, "comet_wmt22": 0.7894776666223413}, "default_metric": "comet_wmt22", "default_metric_score": 0.7894776666223413}
+{"type": "summary", "category": "MT", "metric": "comet_wmt22", "score": 0.8371526553784268, "datasets": ["alt-e-to-j", "alt-j-to-e"]}
