@@ -1069,6 +1069,9 @@ def build_settings_dict(args: argparse.Namespace) -> dict[str, Any]:
         "verbose": False,
     }
 
+    # Sensitive fields that should never be written to settings files
+    sensitive_fields = {"openai_api_key"}
+
     settings: dict[str, Any] = {
         "model": args.model,
         "run_name": getattr(args, "_run_name", None),
@@ -1080,6 +1083,10 @@ def build_settings_dict(args: argparse.Namespace) -> dict[str, Any]:
 
     # Build settings with is_default marker
     for key, default_value in defaults.items():
+        # Skip sensitive fields
+        if key in sensitive_fields:
+            continue
+
         actual_value = getattr(args, key, default_value)
         is_default = actual_value == default_value
 
