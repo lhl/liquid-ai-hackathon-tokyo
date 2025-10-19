@@ -90,6 +90,7 @@ Major British charity Comic Relief has invested money...
 | shisa-ai/chotto-14b-20251007-dpo-openrlhf.sampled-t0_5-p1-m0_1-r1_05-ct_chotto       |       0.9067 |       0.8858 |   0.8963 |    4.34 |   108/200 |
 | shisa-ai/chotto-14b-20251013-dpo.sampled-t0_2-p0_9-ct_chotto                         |       0.9091 |       0.8878 |   0.8984 |    4.39 |   113/200 |
 | shisa-ai/chotto-14b-20251013-dpo.sampled-t0_5-p1-m0_1-r1_05-ct_chotto                |       0.9093 |       0.8878 |   0.8985 |    4.39 |   106/200 |
+| shisa-ai/shisa-v2-llama3.1-405b.sampled-t0_2-p0_9                                    |       0.9165 |       0.8936 |   0.9050 |    4.57 |   128/200 |
 | shisa-ai/shisa-v2.1c-lfm2-350m-sft3-tlonly.sampled-t0_2-p0_9-ct_chotto-lfm2          |       0.8993 |       0.8682 |   0.8837 |    3.63 |    41/200 |
 | shisa-ai/shisa-v2.1c-lfm2-350m-sft3-tlonly.sampled-t0_2-p0_9-ct_chotto               |       0.9014 |       0.8716 |   0.8865 |    3.73 |    55/200 |
 | shisa-ai/shisa-v2.1c-lfm2-350m-sft3-tlonly.sampled-t0_2-p0_9-ct_lfm2                 |       0.8848 |       0.7895 |   0.8372 |    2.95 |    25/200 |
@@ -103,6 +104,7 @@ I built a statistical viewer for our ratings as well.
 
 | Model                                                                       |   Samples |   Mean |   Median |   1% |   2% |   3% |   4% |   5% |   Useful% |   Perfect% | Hist   |
 |-----------------------------------------------------------------------------|-----------|--------|----------|------|------|------|------|------|-----------|------------|--------|
+| shisa-ai/shisa-v2-llama3.1-405b.sampled-t0_2-p0_9                           |       200 |   4.57 |      5.0 |  0.0 |  1.5 |  6.5 | 26.0 | 66.0 |      98.5 |       66.0 | ▁▁▂▄█  |
 | gpt-4o.sampled-t0_2-p0_9                                                    |       200 |   4.55 |      5.0 |  0.0 |  0.5 |  7.5 | 28.0 | 64.0 |      99.5 |       64.0 | ▁▁▂▄█  |
 | shisa-ai/chotto-14b-20251013-dpo.sampled-t0_2-p0_9-ct_chotto                |       200 |   4.39 |      5.0 |  0.0 |  5.5 |  7.5 | 29.5 | 57.5 |      94.5 |       57.5 | ▁▂▂▅█  |
 | shisa-ai/chotto-14b-20251013-dpo.sampled-t0_5-p1-m0_1-r1_05-ct_chotto       |       200 |   4.39 |      5.0 |  0.0 |  1.5 | 12.0 | 32.5 | 54.0 |      98.5 |       54.0 | ▁▁▃▅█  |
