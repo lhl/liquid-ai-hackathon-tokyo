@@ -1,0 +1,191 @@
+{
+  "model": "cyberagent/CAT-Translate-1.4b",
+  "run_name": "cyberagent--CAT-Translate-1.4b.sampled-t0_2-p0_9-ct_cat-translate",
+  "timestamp": "2026-02-03T00:34:17+0900",
+  "settings": {
+    "split": {
+      "value": "test",
+      "default": "test",
+      "is_default": true
+    },
+    "datasets": {
+      "value": [
+        "alt-e-to-j",
+        "alt-j-to-e"
+      ],
+      "default": [
+        "alt-e-to-j",
+        "alt-j-to-e",
+        "wikicorpus-e-to-j",
+        "wikicorpus-j-to-e"
+      ],
+      "is_default": false
+    },
+    "exclude_datasets": {
+      "value": null,
+      "default": null,
+      "is_default": true
+    },
+    "include_wikicorpus": {
+      "value": false,
+      "default": false,
+      "is_default": true
+    },
+    "run_tag": {
+      "value": null,
+      "default": null,
+      "is_default": true
+    },
+    "batch_size": {
+      "value": 256,
+      "default": 256,
+      "is_default": true
+    },
+    "max_samples": {
+      "value": -1,
+      "default": -1,
+      "is_default": true
+    },
+    "num_few_shots": {
+      "value": 4,
+      "default": 4,
+      "is_default": true
+    },
+    "format": {
+      "value": "cat-translate",
+      "default": null,
+      "is_default": false
+    },
+    "temperature": {
+      "value": 0.2,
+      "default": 0.2,
+      "is_default": true
+    },
+    "top_p": {
+      "value": 0.9,
+      "default": 0.9,
+      "is_default": true
+    },
+    "min_p": {
+      "value": 0.0,
+      "default": 0.0,
+      "is_default": true
+    },
+    "repetition_penalty": {
+      "value": 1.0,
+      "default": 1.0,
+      "is_default": true
+    },
+    "do_sample": {
+      "value": true,
+      "default": true,
+      "is_default": true
+    },
+    "extra_output_tokens": {
+      "value": 0,
+      "default": 0,
+      "is_default": true
+    },
+    "dtype": {
+      "value": "auto",
+      "default": "auto",
+      "is_default": true
+    },
+    "engine": {
+      "value": "openai",
+      "default": "auto",
+      "is_default": false
+    },
+    "vllm_tensor_parallel_size": {
+      "value": 1,
+      "default": 1,
+      "is_default": true
+    },
+    "vllm_gpu_memory_utilization": {
+      "value": 0.8,
+      "default": 0.8,
+      "is_default": true
+    },
+    "vllm_max_model_len": {
+      "value": null,
+      "default": null,
+      "is_default": true
+    },
+    "openai_base_url": {
+      "value": "http://localhost:8000/v1",
+      "default": null,
+      "is_default": false
+    },
+    "openai_max_concurrency": {
+      "value": 20,
+      "default": 20,
+      "is_default": true
+    },
+    "openai_request_timeout": {
+      "value": null,
+      "default": null,
+      "is_default": true
+    },
+    "openai_max_retries": {
+      "value": 5,
+      "default": 5,
+      "is_default": true
+    },
+    "openai_retry_wait_seconds": {
+      "value": 1.0,
+      "default": 1.0,
+      "is_default": true
+    },
+    "openai_batch_completion_window": {
+      "value": "24h",
+      "default": "24h",
+      "is_default": true
+    },
+    "openai_batch_poll_interval": {
+      "value": 10.0,
+      "default": 10.0,
+      "is_default": true
+    },
+    "openai_batch_max_requests": {
+      "value": 50000,
+      "default": 50000,
+      "is_default": true
+    },
+    "openai_batch_description": {
+      "value": null,
+      "default": null,
+      "is_default": true
+    },
+    "openai_batch_retain_inputs": {
+      "value": false,
+      "default": false,
+      "is_default": true
+    },
+    "device_map": {
+      "value": "auto",
+      "default": "auto",
+      "is_default": true
+    },
+    "trust_remote_code": {
+      "value": false,
+      "default": false,
+      "is_default": true
+    },
+    "verbose": {
+      "value": false,
+      "default": false,
+      "is_default": true
+    }
+  },
+  "flags": [
+    "cyberagent/CAT-Translate-1.4b",
+    "--datasets",
+    "alt-e-to-j",
+    "alt-j-to-e",
+    "--format",
+    "cat-translate",
+    "--engine",
+    "openai"
+  ],
+  "defaults": {}
+}

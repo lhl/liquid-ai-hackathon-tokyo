@@ -34,6 +34,7 @@ class DistributionStats:
     ratings: list[int]
     counts: Counter[int]
     correct: int
+    comet_mt: float | None = None
 
     @property
     def mean(self) -> float:
@@ -232,6 +233,29 @@ def ascii_sparkline(values: Sequence[int], ascii_only: bool) -> str:
     return "".join(charset[int(round((value / max_value) * scale))] for value in values)
 
 
+def load_comet_score(judge_path: Path) -> float | None:
+    """Load the MT-average COMET score from the corresponding .scores.jsonl file."""
+    scores_path = judge_path.parent / judge_path.name.replace(
+        ".llmjudge-scores.jsonl", ".scores.jsonl"
+    )
+    if not scores_path.exists():
+        return None
+    try:
+        with scores_path.open("r", encoding="utf-8") as fh:
+            for line in fh:
+                if not line.strip():
+                    continue
+                try:
+                    record = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if record.get("type") == "summary" and "score" in record:
+                    return record["score"]
+    except OSError:
+        pass
+    return None
+
+
 def load_distribution(source: JudgeSource) -> DistributionStats | None:
     ratings: list[int] = []
     correct_total = 0
@@ -270,6 +294,7 @@ def load_distribution(source: JudgeSource) -> DistributionStats | None:
         ratings=ratings,
         counts=counts,
         correct=correct_total,
+        comet_mt=load_comet_score(source.path),
     )
 
 
@@ -330,6 +355,7 @@ def build_table(distributions: Sequence[DistributionStats], ascii_only: bool) ->
     headers = [
         "Model",
         "Samples",
+        "MT",
         "Mean",
         "Median",
         "1%",
@@ -343,9 +369,11 @@ def build_table(distributions: Sequence[DistributionStats], ascii_only: bool) ->
     ]
     rows = []
     for stats in distributions:
+        mt_display = f"{stats.comet_mt:.3f}" if stats.comet_mt is not None else "-"
         row = [
             stats.source.display_name,
             stats.samples,
+            mt_display,
             stats.mean,
             stats.median,
             stats.percentage(1),
@@ -371,11 +399,13 @@ def build_table(distributions: Sequence[DistributionStats], ascii_only: bool) ->
         "right",
         "right",
         "right",
+        "right",
         "left",
     ]
     floatfmt = [
         "",  # Model
         "",  # Samples
+        "",  # MT (pre-formatted)
         ".2f",
         ".1f",
         ".1f",

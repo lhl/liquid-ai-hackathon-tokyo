@@ -1,8 +1,10 @@
 [
+  "cyberagent--CAT-Translate-1.4b.sampled-t0_2-p0_9-ct_cat-translate.llmjudge-scores.jsonl",
   "LiquidAI--LFM2-350M-ENJP-MT.greedy.llmjudge-scores.jsonl",
   "LiquidAI--LFM2-350M-ENJP-MT.sampled-t0_5-p1-m0_1-r1_05-ct_lfm2.llmjudge-scores.jsonl",
   "LiquidAI--LFM2-350M-ENJP-MT.sampled-t0_5-p1-m0_1-r1_05.llmjudge-scores.jsonl",
   "google--gemma-3-4b-it.sampled-t0_2-p0_9.llmjudge-scores.jsonl",
+  "google--translategemma-12b-it.sampled-t0_2-p0_9-ct_translategemma.llmjudge-scores.jsonl",
   "gpt-4o.sampled-t0_2-p0_9.llmjudge-scores.jsonl",
   "shisa-ai--chotto-14b-20251013-dpo.sampled-t0_2-p0_9-ct_chotto.llmjudge-scores.jsonl",
   "shisa-ai--chotto-14b-20251013-dpo.sampled-t0_5-p1-m0_1-r1_05-ct_chotto.llmjudge-scores.jsonl",

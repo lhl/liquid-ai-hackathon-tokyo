@@ -123,6 +123,11 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help="Path to write run logs. Defaults to results/<model>.log.",
     )
+    parser.add_argument(
+        "--predictions-only",
+        action="store_true",
+        help="Save predictions but skip metric scoring (useful when COMET is broken).",
+    )
     parser.add_argument("--temperature", type=float, default=0.2, help="Sampling temperature.")
     parser.add_argument("--top-p", type=float, default=0.9, help="Top-p sampling cutoff.")
     parser.add_argument("--min-p", type=float, default=0.0, help="Min-p sampling cutoff.")
@@ -409,9 +414,6 @@ def prepare_prompts(
     generated_samples: list[GeneratedSample] = []
 
     if chat_template_mode:
-        # Chat template mode: construct messages and apply tokenizer's chat template
-        if tokenizer is None:
-            raise ValueError("tokenizer is required when chat_template_mode=True")
 
         import jinja2
 
@@ -488,16 +490,44 @@ def prepare_prompts(
                 messages.append({"role": "system", "content": system_content})
             messages.append({"role": "user", "content": user_content})
 
-            # Apply chat template
-            try:
-                prompt = tokenizer.apply_chat_template(
-                    messages,
-                    tokenize=False,
-                    add_generation_prompt=True,
+            # Models with structured chat templates (e.g. TranslateGemma) need
+            # special message construction for apply_chat_template to work.
+            if format_name == "translategemma" and tokenizer is not None:
+                lang_code_map = {"Japanese": "ja", "English": "en"}
+                src_code = lang_code_map.get(
+                    "English" if target_language == "Japanese" else "Japanese", "en"
                 )
-            except Exception as e:
-                LOGGER.error("Failed to apply chat template for sample: %s", e)
-                # Fallback to simple concatenation
+                tgt_code = lang_code_map.get(target_language, "ja")
+                messages = [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "source_lang_code": src_code,
+                                "target_lang_code": tgt_code,
+                                "text": sample["input"],
+                            }
+                        ],
+                    }
+                ]
+
+            # Apply chat template
+            if tokenizer is not None:
+                try:
+                    prompt = tokenizer.apply_chat_template(
+                        messages,
+                        tokenize=False,
+                        add_generation_prompt=True,
+                    )
+                except Exception as e:
+                    LOGGER.error("Failed to apply chat template for sample: %s", e)
+                    if system_content:
+                        prompt = f"{system_content}\n{user_content}"
+                    else:
+                        prompt = user_content
+            else:
+                # No tokenizer (e.g. openai engine) – use rendered content directly
                 if system_content:
                     prompt = f"{system_content}\n{user_content}"
                 else:
@@ -756,22 +786,33 @@ def _batch_generate_openai(
     outputs: list[str] = []
     effective_temperature = temperature if do_sample else 0.0
     effective_top_p = top_p if do_sample else 1.0
+    use_completions = bool(engine_config.get("use_completions"))
 
     def generate_prompt(prompt: str) -> str:
         wait = base_wait
         attempt = 0
         while True:
             try:
-                response = client.chat.completions.create(
-                    model=model_name,
-                    messages=[{"role": "user", "content": prompt}],
-                    max_tokens=max_new_tokens,
-                    temperature=effective_temperature,
-                    top_p=effective_top_p,
-                    timeout=request_timeout,
-                )
-                choice = response.choices[0]
-                text = choice.message.content or ""
+                if use_completions:
+                    response = client.completions.create(
+                        model=model_name,
+                        prompt=prompt,
+                        max_tokens=max_new_tokens,
+                        temperature=effective_temperature,
+                        top_p=effective_top_p,
+                        timeout=request_timeout,
+                    )
+                    text = response.choices[0].text or ""
+                else:
+                    response = client.chat.completions.create(
+                        model=model_name,
+                        messages=[{"role": "user", "content": prompt}],
+                        max_tokens=max_new_tokens,
+                        temperature=effective_temperature,
+                        top_p=effective_top_p,
+                        timeout=request_timeout,
+                    )
+                    text = response.choices[0].message.content or ""
                 return text.strip()
             except Exception as exc:  # pragma: no cover - depends on network failures
                 if attempt >= max_retries:
@@ -1344,6 +1385,18 @@ def main() -> None:
         client = OpenAI(**client_kwargs)
         model = client
         tokenizer = None
+        use_completions = False
+
+        # When --format is set, load tokenizer so prepare_prompts can apply the
+        # chat template, then use the /v1/completions endpoint with pre-rendered prompts.
+        if chat_template_mode:
+            LOGGER.info("Loading tokenizer %s for chat template rendering (openai engine)", args.model)
+            tokenizer = AutoTokenizer.from_pretrained(
+                args.model,
+                trust_remote_code=args.trust_remote_code,
+            )
+            use_completions = True
+
         engine_config = {
             "client": client,
             "model_name": args.model,
@@ -1351,6 +1404,7 @@ def main() -> None:
             "request_timeout": args.openai_request_timeout,
             "max_retries": args.openai_max_retries,
             "retry_wait": args.openai_retry_wait_seconds,
+            "use_completions": use_completions,
         }
     elif engine == "openai-batch":
         try:
@@ -1448,7 +1502,8 @@ def main() -> None:
         all_dataset_configs.append((dataset_cfg, samples))
         all_metrics.update(dataset_cfg.metrics)
 
-    ensure_metrics_initialized(all_metrics, args.cache_dir)
+    if not args.predictions_only:
+        ensure_metrics_initialized(all_metrics, args.cache_dir)
     LOGGER.info("Total samples queued across datasets: %d", total_samples)
 
     if args.output and args.scores and args.output != args.scores:
@@ -1494,47 +1549,61 @@ def main() -> None:
         for sample, output in zip(samples, generations, strict=False):
             sample["generated"] = normalize(output)
 
-        score_dict, _, output_records = get_evaluation_result(
-            run_name=run_name,
-            samples=samples,
-            num_few_shots=dataset_cfg.num_few_shots,
-            target_dataset_name=dataset_cfg.name,
-            target_split=args.split,
-            target_data_answer_extract_pattern=dataset_cfg.answer_extract_pattern or DEFAULT_ANSWER_PATTERN,
-            answer_pattern_id=dataset_cfg.answer_pattern_id,
-            metrics=dataset_cfg.metrics,
-            label_list=dataset_cfg.label_list,
-            metainfo={
-                "basemodel_name": args.model,
-                "model_type": "",
-                "instruction_tuning_method_by_llm_jp": None,
-                "instruction_tuning_data_by_llm_jp": None,
-            },
-            dataset_processor_name=dataset_cfg.name,
-        )
+        if args.predictions_only:
+            # Skip scoring, just collect predictions
+            for sample in samples:
+                prediction_records.append({
+                    "type": "prediction",
+                    "dataset": dataset_cfg.name,
+                    "input": sample["input"],
+                    "gold": sample["gold"],
+                    "generated": sample["generated"],
+                    "prompt": sample["prompt"],
+                    "metadata": sample.get("metadata", {}),
+                })
+            LOGGER.info("%s: %d predictions collected (scoring skipped)", dataset_cfg.name, len(samples))
+        else:
+            score_dict, _, output_records = get_evaluation_result(
+                run_name=run_name,
+                samples=samples,
+                num_few_shots=dataset_cfg.num_few_shots,
+                target_dataset_name=dataset_cfg.name,
+                target_split=args.split,
+                target_data_answer_extract_pattern=dataset_cfg.answer_extract_pattern or DEFAULT_ANSWER_PATTERN,
+                answer_pattern_id=dataset_cfg.answer_pattern_id,
+                metrics=dataset_cfg.metrics,
+                label_list=dataset_cfg.label_list,
+                metainfo={
+                    "basemodel_name": args.model,
+                    "model_type": "",
+                    "instruction_tuning_method_by_llm_jp": None,
+                    "instruction_tuning_data_by_llm_jp": None,
+                },
+                dataset_processor_name=dataset_cfg.name,
+            )
 
-        score_results[dataset_cfg.name] = score_dict
+            score_results[dataset_cfg.name] = score_dict
 
-        dataset_level_records.append(
-            {
-                "type": "dataset",
-                "dataset": dataset_cfg.name,
-                "num_samples": len(samples),
-                "metrics": score_dict,
-                "default_metric": default_metric,
-                "default_metric_score": score_dict.get(default_metric),
-            }
-        )
+            dataset_level_records.append(
+                {
+                    "type": "dataset",
+                    "dataset": dataset_cfg.name,
+                    "num_samples": len(samples),
+                    "metrics": score_dict,
+                    "default_metric": default_metric,
+                    "default_metric_score": score_dict.get(default_metric),
+                }
+            )
 
-        if args.predictions:
-            for record in output_records:
-                prediction_records.append({"type": "prediction", **record.__dict__})
+            if args.predictions:
+                for record in output_records:
+                    prediction_records.append({"type": "prediction", **record.__dict__})
 
-        LOGGER.info(
-            "%s scores: %s",
-            dataset_cfg.name,
-            ", ".join(f"{k}={v:.4f}" for k, v in score_dict.items() if isinstance(v, (int, float))),
-        )
+            LOGGER.info(
+                "%s scores: %s",
+                dataset_cfg.name,
+                ", ".join(f"{k}={v:.4f}" for k, v in score_dict.items() if isinstance(v, (int, float))),
+            )
 
     mt_scores = [
         score_results[name][default_metric]
