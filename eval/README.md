@@ -38,8 +38,9 @@ CUDA_VISIBLE_DEVICES=3 ./run-mt.py google/gemma-3-4b-it --do-sample --temperatur
 ```
 
 ## Result Utilities
+- **LLM-as-Judge evaluation**: `./judge-mt.py` — runs Gemini 2.5 Pro as an LLM judge on MT prediction files, producing 1–5 quality scores per sample.
 - Markdown table of COMET scores: `python report_mt_scores.py` (use `--metric` / `--human-names` for customisation).
- - Judge score distribution stats: `python report_judge_distribution.py` (add `--interactive` to choose models, `--ascii-only` if block glyphs are undesirable; output now highlights Useful ≥3 and Perfect =5 rates).
+- Judge score distribution stats: `python report_judge_distribution.py` — compares COMET vs LLM Judge scores and shows statistical distribution for a subset of models (add `--interactive` to choose models, `--ascii-only` if block glyphs are undesirable; output highlights Useful ≥3 and Perfect =5 rates).
 - Interactive TUI scoreboard (grouped by model & run): `python mt_scores_tui.py` (same flags as `report_mt_scores.py`).
 - Random sample viewer: `python sample_predictions.py LiquidAI/LFM2-350M-ENJP-MT --count 10`.
 - Override locations with `--results-dir`, `--scores`, `--predictions`, or `--log-file` when runs are stored elsewhere.
